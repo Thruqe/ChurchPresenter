@@ -1,0 +1,10 @@
+[package]
+name = "gtk-app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+glib = "0.22.8"
+gtk = { version = "0.9", package = "gtk4" }
+rusqlite = { version = "0.31", features = ["bundled"] }
+ndi = "0.1.2"

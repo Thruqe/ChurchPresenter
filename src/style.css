@@ -1,0 +1,625 @@
+/* style.css - Clean modernized visual styling for EasyWorship GTK Application */
+
+/* General Window styling */
+window {
+    background-color: #f3f4f6;
+    /* Modern light neutral background */
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    /* Increased overall font size */
+    color: #1f2937;
+    /* Softer text color */
+}
+
+/* Menu Bar styling */
+.menubar-container {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 4px 12px;
+}
+
+.menubar-button {
+    background: none;
+    border: none;
+    box-shadow: none;
+    color: #4b5563;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-weight: 500;
+    transition: all 0.15s ease-in-out;
+}
+
+.menubar-button:hover {
+    background-color: #f3f4f6;
+    color: #111827;
+}
+
+.menu-item-button {
+    background: none;
+    border: none;
+    box-shadow: none;
+    color: #374151;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: normal;
+    transition: background-color 0.15s ease-in-out;
+}
+
+.menu-item-button:hover {
+    background-color: #f3f4f6;
+    color: #111827;
+}
+
+
+/* Toolbar styling */
+.toolbar-container {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 8px 16px;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.toolbar-button {
+    background: none;
+    border: 1px solid transparent;
+    box-shadow: none;
+    color: #4b5563;
+    padding: 8px 12px;
+    border-radius: 8px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toolbar-button:hover {
+    background-color: #f3f4f6;
+    color: #111827;
+}
+
+.toolbar-button:active {
+    background-color: #e5e7eb;
+}
+
+/* Active (toggled-on) state for Black / Clear buttons */
+.toolbar-button-active {
+    background-color: #1f2937;
+    color: #f9fafb;
+    border: 1px solid #374151;
+}
+
+.toolbar-button-active:hover {
+    background-color: #111827;
+    color: #ffffff;
+}
+
+.toolbar-button-label {
+    font-size: 13px;
+    /* Increased toolbar label size */
+    font-weight: 600;
+    /* Semi-bold feel for toolbar */
+    letter-spacing: 0.03em;
+}
+
+/* Spacer */
+.toolbar-spacer {
+    background-color: #e5e7eb;
+    margin: 6px 10px;
+    min-width: 1px;
+}
+
+/* Split Pane containers */
+paned separator {
+    background-color: #e5e7eb;
+    min-width: 3px;
+    min-height: 3px;
+    transition: background-color 0.2s;
+}
+
+paned separator:hover {
+    background-color: #cbd5e1;
+}
+
+/* Panel Header styling - always visible, never collapses */
+.panel-header {
+    background-color: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 8px 16px;
+    min-height: 36px;
+}
+
+.panel-title {
+    font-weight: 600;
+    /* Semi-bold panel title */
+    color: #374151;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+}
+
+.panel-content {
+    background-color: #ffffff;
+}
+
+/* Slide Preview Container */
+.preview-slide-container {
+    background-color: transparent;
+    padding: 24px;
+}
+
+.preview-slide-card {
+    border-radius: 12px;
+    /* Smoother corner radius */
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    padding: 32px;
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.preview-slide-header {
+    font-size: 16px;
+    font-weight: 700;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    padding-top: 10px;
+    margin-top: 20px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.preview-slide-body {
+    font-family: "Tahoma", "Geneva", sans-serif;
+    font-size: 21px;
+    /* Scripture display font: Tahoma */
+    line-height: 1.6;
+    color: #ffffff;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* Live Slides list styling */
+.live-slides-list {
+    background-color: #ffffff;
+    padding: 6px;
+}
+
+.live-slide-row {
+    padding: 10px 14px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    transition: all 0.15s ease-in-out;
+}
+
+.live-slide-row:hover {
+    background-color: #f3f4f6;
+}
+
+.live-slide-number {
+    background-color: #e5e7eb;
+    color: #4b5563;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 700;
+    margin-right: 12px;
+}
+
+.live-slide-text {
+    font-size: 15px;
+    color: #374151;
+}
+
+.live-slide-active {
+    background-color: #ecfdf5;
+    /* Elegant light emerald */
+    border-left: 4px solid #10b981;
+}
+
+.live-slide-active label {
+    color: #065f46;
+}
+
+.live-slide-active .live-slide-number {
+    background-color: #a7f3d0;
+    color: #065f46;
+}
+
+/* Segmented Control Tab Bar styling */
+.tabbar-container {
+    background-color: #f3f4f6;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 6px 12px;
+}
+
+.tab-button {
+    background: none;
+    border: none;
+    border-radius: 6px;
+    box-shadow: none;
+    color: #6b7280;
+    padding: 6px 16px;
+    font-weight: 600;
+    /* Semi-bold feel for Song, Scripture, Media, Themes tabs */
+    font-size: 15px;
+    margin-right: 4px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tab-button:hover {
+    background-color: #e5e7eb;
+    color: #374151;
+}
+
+.tab-button-active {
+    background-color: #ffffff;
+    color: #111827;
+    /* Deep black for active tab - not blue */
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.tabbar-actions {
+    padding: 2px;
+}
+
+.tab-action-button {
+    padding: 4px 10px;
+    font-size: 15px;
+    border-radius: 6px;
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    color: #4b5563;
+    transition: all 0.15s;
+}
+
+.tab-action-button:hover {
+    background-color: #f9fafb;
+    border-color: #c5c9d1;
+    color: #111827;
+}
+
+/* Sidebar styling */
+.sidebar-container {
+    background-color: #f9fafb;
+    border-right: 1px solid #e5e7eb;
+}
+
+entry.sidebar-search {
+    background-color: #f3f4f6;
+    background-image: none;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 14px;
+    box-shadow: none;
+    min-height: 34px;
+    margin: 8px 12px;
+}
+
+entry.sidebar-search:focus,
+entry.sidebar-search:focus-within {
+    background-color: #e5e7eb;
+    outline: none;
+    box-shadow: none;
+}
+
+.sidebar-section-header {
+    font-size: 12px;
+    font-weight: 700;
+    color: #9ca3af;
+    letter-spacing: 0.08em;
+    padding: 12px 16px 6px 16px;
+    text-transform: uppercase;
+}
+
+.sidebar-row {
+    padding: 4px 16px;
+    font-size: 14px;
+    color: #4b5563;
+    border-radius: 4px;
+    margin: 1px 8px;
+    transition: all 0.15s ease-in-out;
+    border: none;
+    outline: none;
+    box-shadow: none;
+}
+
+.sidebar-row:hover {
+    background-color: #e2e2e2;
+    border: none;
+    outline: none;
+    box-shadow: none;
+}
+
+.sidebar-row:hover label {
+    color: #1f2937;
+}
+
+/* Kill any native row focus/selection border or inset styling */
+row,
+row:hover,
+row:selected,
+row:focus,
+row:selected:focus {
+    border: none;
+    outline: none;
+    box-shadow: none;
+    border-radius: 0;
+}
+
+row:selected,
+row:selected:hover,
+row:selected:focus,
+row:selected:hover:focus {
+    background-color: #d8d8d8;
+    background-image: none;
+    color: #1e293b;
+    border: none;
+    outline: none;
+    box-shadow: none;
+}
+
+row:selected label,
+row:selected:hover label,
+row:selected:focus label {
+    color: #0f172a;
+}
+
+/* Keep selected row visually consistent when hovered */
+row.sidebar-row-selected:hover,
+row.sidebar-row-selected:hover label {
+    background-color: #d8d8d8;
+    color: #0f172a;
+}
+
+/* Main content table styling */
+.table-header {
+    background-color: #f5f5f5;
+    /* Clean light grey header */
+    border-bottom: 1px solid #cccccc;
+    padding: 0px;
+}
+
+.table-header-col {
+    font-weight: 600;
+    color: #333333;
+    font-size: 15px;
+    /* Matched to populated area */
+    padding: 6px 12px;
+}
+
+.table-row {
+    padding: 0px;
+    /* Let labels handle padding for full grid borders */
+    border-bottom: 1px solid #e2e8f0;
+    border-radius: 0px;
+    /* Flat borders */
+    margin: 0px;
+    /* Flush */
+    transition: background-color 0.1s ease-in-out;
+}
+
+.table-row:hover {
+    background-color: #f2f2f2;
+    /* Neutral, no blue */
+}
+
+.table-row:selected {
+    background-color: #d8d8d8;
+    /* Medium grey highlight, matching Windows native look */
+    color: #1e293b;
+}
+
+.table-row:selected label {
+    color: #0f172a;
+}
+
+/* Fix disappearing text on selected row hover */
+.table-row:selected:hover {
+    background-color: #d8d8d8;
+}
+
+.table-row:selected:hover label {
+    color: #0f172a;
+}
+
+row:selected:hover,
+row:selected:hover label {
+    background-color: #d8d8d8;
+    color: #0f172a;
+}
+
+.table-cell-text {
+    font-size: 15px;
+    padding: 8px 12px;
+    /* Uniform cell padding */
+}
+
+/* Border separator lines for database columns */
+.table-cell-border {
+    border-right: 1px solid #e2e8f0;
+}
+
+
+/* Media Grid styling */
+.media-grid {
+    padding: 20px;
+}
+
+.media-card {
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease-in-out;
+}
+
+.media-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    border-color: #d1d5db;
+}
+
+.media-thumbnail-placeholder {
+    min-height: 80px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.media-card-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #4b5563;
+}
+
+/* Theme color classes */
+.theme-classic-red {
+    background-color: #800000;
+}
+
+.theme-classic-red label {
+    color: #ffffff;
+}
+
+.theme-royal-blue {
+    background-color: #1e3a8a;
+}
+
+.theme-royal-blue label {
+    color: #fef08a;
+}
+
+.theme-forest-green {
+    background-color: #064e3b;
+}
+
+.theme-forest-green label {
+    color: #ffffff;
+}
+
+.theme-dark-slate {
+    background-color: #1e293b;
+}
+
+.theme-dark-slate label {
+    color: #38bdf8;
+}
+
+/* Status bar styling */
+.statusbar {
+    background-color: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+    padding: 8px 16px;
+    font-size: 14px;
+    color: #111827;
+}
+
+/* ── View mode toggle (Visual / Text switch) ──────────────────────────── */
+.view-toggle-box {
+    background-color: #f3f4f6;
+    border-radius: 8px;
+    padding: 2px;
+    border: 1px solid #e5e7eb;
+}
+
+.view-toggle-btn {
+    background: none;
+    border: none;
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    box-shadow: none;
+    min-width: 0;
+    transition: all 0.18s ease;
+}
+
+.view-toggle-btn:hover {
+    background-color: #e5e7eb;
+    color: #374151;
+}
+
+.view-toggle-btn-active {
+    background-color: #ffffff;
+    color: #111827;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* Text-mode output panel */
+.text-output-container {
+    background-color: #ffffff;
+    padding: 20px 24px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    margin: 16px;
+}
+
+.text-output-reference {
+    font-family: "Segoe UI", sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b7280;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+.text-output-body {
+    font-family: "Tahoma", "Geneva", sans-serif;
+    font-size: 19px;
+    line-height: 1.65;
+    color: #1f2937;
+}
+
+
+/* Remove focus highlights and outlines from the right-click copy button */
+.menu-item-button:focus,
+.menu-item-button:focus-visible,
+popover button:focus,
+popover button:focus-visible {
+    background: none;
+    outline: none;
+    box-shadow: none;
+    border: none;
+}
+
+/* Copied confirmation style */
+.menu-item-button.copied-active {
+    color: #16a34a;
+    font-weight: bold;
+}
+
+/* Custom About Window styling */
+.about-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #111827;
+}
+.about-version {
+    font-size: 13px;
+    color: #6b7280;
+}
+.about-description {
+    font-size: 14px;
+    color: #374151;
+}
+.about-details {
+    font-size: 13px;
+    color: #4b5563;
+    line-height: 1.5;
+    background-color: #f3f4f6;
+    padding: 12px;
+    border-radius: 6px;
+}
+.about-close-btn {
+    background-color: #2563eb;
+    background-image: none;
+    color: #ffffff;
+    border: none;
+    padding: 8px 24px;
+    border-radius: 6px;
+    font-weight: bold;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-top: 10px;
+}
+.about-close-btn:hover {
+    background-color: #1d4ed8;
+    color: #ffffff;
+}
