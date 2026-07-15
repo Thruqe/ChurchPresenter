@@ -4,7 +4,14 @@
 window {
     background-color: #f3f4f6;
     /* Modern light neutral background */
-    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    font-family:
+        "Segoe UI",
+        -apple-system,
+        BlinkMacSystemFont,
+        Roboto,
+        Helvetica,
+        Arial,
+        sans-serif;
     font-size: 16px;
     /* Increased overall font size */
     color: #1f2937;
@@ -49,7 +56,6 @@ window {
     background-color: #f3f4f6;
     color: #111827;
 }
-
 
 /* Toolbar styling */
 .toolbar-container {
@@ -434,7 +440,6 @@ row:selected:hover label {
     border-right: 1px solid #e2e8f0;
 }
 
-
 /* Media Grid styling */
 .media-grid {
     padding: 20px;
@@ -451,7 +456,9 @@ row:selected:hover label {
 
 .media-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    box-shadow:
+        0 4px 6px -1px rgba(0, 0, 0, 0.1),
+        0 2px 4px -1px rgba(0, 0, 0, 0.06);
     border-color: #d1d5db;
 }
 
@@ -563,11 +570,10 @@ row:selected:hover label {
 
 .text-output-body {
     font-family: "Tahoma", "Geneva", sans-serif;
-    font-size: 19px;
+    font-size: 74px;
     line-height: 1.65;
     color: #1f2937;
 }
-
 
 /* Remove focus highlights and outlines from the right-click copy button */
 .menu-item-button:focus,
@@ -621,5 +627,13 @@ popover button:focus-visible {
 }
 .about-close-btn:hover {
     background-color: #1d4ed8;
+    color: #ffffff;
+}
+
+.theme-black {
+    background-color: #000000;
+}
+
+.theme-black label {
     color: #ffffff;
 }

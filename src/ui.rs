@@ -1,25 +1,17 @@
 use gtk::prelude::*;
 use gtk::{
-    Application, ApplicationWindow, Box, Button, Separator, FlowBox,
-    Entry, Label, ListBox, ListBoxRow, Orientation, PolicyType, Popover,
-    ScrolledWindow, Stack, Image,
+    Application, ApplicationWindow, Box, Button, Entry, FlowBox, Image, Label, ListBox, ListBoxRow,
+    Orientation, PolicyType, Popover, ScrolledWindow, Separator, Stack,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::models::{AppState, Verse};
 use crate::db::{
-    get_songs, query_verses, query_verses_by_mode, parse_reference, autocomplete_book_name,
+    autocomplete_book_name, get_songs, parse_reference, query_verses, query_verses_by_mode,
 };
+use crate::models::{AppState, Verse};
 
-
-fn draw_background(
-    cr: &gtk::cairo::Context,
-    width: f64,
-    height: f64,
-    theme: &str,
-    blackout: bool,
-) {
+fn draw_background(cr: &gtk::cairo::Context, width: f64, height: f64, theme: &str, blackout: bool) {
     if blackout {
         cr.set_source_rgb(0.0, 0.0, 0.0);
         let _ = cr.paint();
@@ -27,7 +19,11 @@ fn draw_background(
         let path = std::path::Path::new(theme);
         if path.exists() && path.is_file() {
             if let Ok(pixbuf) = gtk::gdk_pixbuf::Pixbuf::from_file(theme) {
-                if let Some(scaled) = pixbuf.scale_simple(width as i32, height as i32, gtk::gdk_pixbuf::InterpType::Bilinear) {
+                if let Some(scaled) = pixbuf.scale_simple(
+                    width as i32,
+                    height as i32,
+                    gtk::gdk_pixbuf::InterpType::Bilinear,
+                ) {
                     cr.set_source_pixbuf(&scaled, 0.0, 0.0);
                     let _ = cr.paint();
                 } else {
@@ -44,6 +40,7 @@ fn draw_background(
                 "royal-blue" => cr.set_source_rgb(0.0, 0.1, 0.4),
                 "forest-green" => cr.set_source_rgb(0.0, 0.3, 0.1),
                 "dark-slate" => cr.set_source_rgb(0.1, 0.12, 0.15),
+                "black" => cr.set_source_rgb(0.0, 0.0, 0.0),
                 _ => cr.set_source_rgb(0.0, 0.0, 0.0),
             }
             let _ = cr.paint();
@@ -71,24 +68,35 @@ fn draw_single_slide_text(
 
         let logo_cross = "✝";
         if let Ok(ext) = cr.text_extents(logo_cross) {
-            cr.move_to((width - ext.width()) / 2.0, (height - ext.height()) / 2.0 - height * 0.037);
+            cr.move_to(
+                (width - ext.width()) / 2.0,
+                (height - ext.height()) / 2.0 - height * 0.037,
+            );
             let _ = cr.show_text(logo_cross);
         }
 
         cr.set_font_size(height * 0.037);
         let logo_lbl = "EasyWorship - Standby";
         if let Ok(ext) = cr.text_extents(logo_lbl) {
-            cr.move_to((width - ext.width()) / 2.0, (height - ext.height()) / 2.0 + height * 0.055);
+            cr.move_to(
+                (width - ext.width()) / 2.0,
+                (height - ext.height()) / 2.0 + height * 0.055,
+            );
             let _ = cr.show_text(logo_lbl);
         }
     } else if !blackout && !clearout {
-        let body_font_size = height * 0.045;
-        let header_font_size = height * 0.030;
-        
+        let body_font_size = height * 0.06;
+        let header_font_size = height * 0.045;
+
+        println!(
+            "DEBUG: UI canvas draw_single_slide_text — height={:.1}, body_font_size={:.1}",
+            height, body_font_size
+        );
+
         // Wrap body text
         let max_width = width - width * 0.15; // 15% margin
         let mut wrapped_lines = Vec::new();
-        
+
         cr.set_font_size(body_font_size);
         cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
 
@@ -115,7 +123,7 @@ fn draw_single_slide_text(
                 wrapped_lines.push(current_line);
             }
         }
-        
+
         // Calculate vertical metrics
         let line_spacing = height * 0.06;
         let total_body_height = if wrapped_lines.is_empty() {
@@ -123,10 +131,10 @@ fn draw_single_slide_text(
         } else {
             (wrapped_lines.len() - 1) as f64 * line_spacing + body_font_size
         };
-        
+
         // Center the body block vertically
         let start_y = (height - total_body_height) / 2.0;
-        
+
         // Draw body lines centered
         let mut current_y = start_y + body_font_size * 0.8; // adjust for baseline
         for line in &wrapped_lines {
@@ -136,7 +144,7 @@ fn draw_single_slide_text(
             }
             current_y += line_spacing;
         }
-        
+
         // Draw header (verse reference) below the body, aligned right
         cr.set_font_size(header_font_size);
         cr.set_source_rgba(0.85, 0.85, 0.85, alpha); // slightly gray for contrast
@@ -149,7 +157,7 @@ fn draw_single_slide_text(
         }
     } else if clearout && !blackout {
         // Clearout (Header/reference only, centered in the middle since body is cleared)
-        let header_font_size = height * 0.040;
+        let header_font_size = height * 0.050;
         cr.set_font_size(header_font_size);
         cr.set_source_rgba(0.85, 0.85, 0.85, alpha);
         if let Ok(ext) = cr.text_extents(header) {
@@ -183,29 +191,40 @@ fn draw_slide_cairo(
         if elapsed < duration {
             let progress = elapsed / duration;
             // Draw previous slide text fading out
-            draw_single_slide_text(cr, width, height, prev_header, prev_body, logo_mode, clearout, blackout, 1.0 - progress);
+            draw_single_slide_text(
+                cr,
+                width,
+                height,
+                prev_header,
+                prev_body,
+                logo_mode,
+                clearout,
+                blackout,
+                1.0 - progress,
+            );
             // Draw new slide text fading in
-            draw_single_slide_text(cr, width, height, header, body, logo_mode, clearout, blackout, progress);
+            draw_single_slide_text(
+                cr, width, height, header, body, logo_mode, clearout, blackout, progress,
+            );
             return;
         }
     }
 
     // Default: draw only target text at 100% opacity
-    draw_single_slide_text(cr, width, height, header, body, logo_mode, clearout, blackout, 1.0);
+    draw_single_slide_text(
+        cr, width, height, header, body, logo_mode, clearout, blackout, 1.0,
+    );
 }
 
-
-
-fn start_live_transition(
-    drawing_area: &gtk::DrawingArea,
-    state: &Rc<RefCell<AppState>>,
-) {
+fn start_live_transition(drawing_area: &gtk::DrawingArea, state: &Rc<RefCell<AppState>>) {
     let drawing_area = drawing_area.clone();
     let state = state.clone();
     gtk::glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
         let elapsed = {
             let s = state.borrow();
-            s.live_trans_start.map(|t| t.elapsed().as_millis()).unwrap_or(999)
+            s.live_trans_start
+                .map(|t| t.elapsed().as_millis())
+                .unwrap_or(999)
         };
         drawing_area.queue_draw();
         if elapsed >= 800 {
@@ -218,7 +237,6 @@ fn start_live_transition(
     });
 }
 
-
 fn add_media_card(
     media_flow: &gtk::FlowBox,
     themes_flow: &gtk::FlowBox,
@@ -228,7 +246,7 @@ fn add_media_card(
     update_theme: &Rc<dyn Fn()>,
 ) {
     use gtk::prelude::*;
-    use gtk::{Box, Label, Popover, Button, Orientation};
+    use gtk::{Box, Button, Label, Orientation, Popover};
 
     let card = Box::builder()
         .orientation(Orientation::Vertical)
@@ -237,8 +255,8 @@ fn add_media_card(
         .build();
     card.add_css_class("media-card");
 
-    let is_video = abs_path.to_lowercase().ends_with(".mp4") 
-        || abs_path.to_lowercase().ends_with(".mkv") 
+    let is_video = abs_path.to_lowercase().ends_with(".mp4")
+        || abs_path.to_lowercase().ends_with(".mkv")
         || abs_path.to_lowercase().ends_with(".avi");
 
     let thumb_container = Box::builder().height_request(80).build();
@@ -262,7 +280,9 @@ fn add_media_card(
         );
         println!("DEBUG: Loading CSS for thumbnail: {}", css_data);
         provider.load_from_data(&css_data);
-        thumb_container.style_context().add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+        thumb_container
+            .style_context()
+            .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
     }
 
     let lbl = Label::builder().label(filename).build();
@@ -273,10 +293,13 @@ fn add_media_card(
 
     let popover = Popover::builder().build();
     let popover_box = Box::builder().orientation(Orientation::Vertical).build();
-    
-    let copy_theme_btn = Button::builder().label("Copy to Themes").has_frame(false).build();
+
+    let copy_theme_btn = Button::builder()
+        .label("Copy to Themes")
+        .has_frame(false)
+        .build();
     copy_theme_btn.add_css_class("menu-item-button");
-    
+
     let delete_btn = Button::builder().label("Delete").has_frame(false).build();
     delete_btn.add_css_class("menu-item-button");
 
@@ -441,20 +464,20 @@ pub fn build_ui(app: &Application) {
             .orientation(Orientation::Vertical)
             .spacing(0)
             .build();
-        
+
         for item_name in items {
             let item_btn = Button::builder().label(item_name).can_focus(false).build();
             item_btn.add_css_class("menu-item-button");
             item_btn.set_has_frame(false);
-            
+
             let popover_clone = popover.clone();
             let app_clone = app.clone();
             let item_name_str = item_name.to_string();
-            
+
             item_btn.connect_clicked(move |_| {
                 println!("DEBUG: connect_clicked triggered at line 299");
                 popover_clone.popdown(); // Hide the popover menu
-                
+
                 match item_name_str.as_str() {
                     "Quit" => app_clone.quit(),
                     "Restart" => {
@@ -522,7 +545,7 @@ pub fn build_ui(app: &Application) {
                                 .label("EasyWorship - GTK4 Edition")
                                 .build();
                             title_lbl.add_css_class("about-title");
-                            
+
                             let ver_lbl = Label::builder()
                                 .label("Version 1.0.0")
                                 .build();
@@ -579,7 +602,7 @@ pub fn build_ui(app: &Application) {
                     }
                 }
             });
-            
+
             popover_box.append(&item_btn);
         }
         popover.set_child(Some(&popover_box));
@@ -590,10 +613,10 @@ pub fn build_ui(app: &Application) {
             .can_focus(false)
             .build();
         popover.set_parent(&btn);
-        
+
         let popover_clone = popover.clone();
         btn.connect_clicked(move |_| {
-                println!("DEBUG: connect_clicked triggered at line 354");
+            println!("DEBUG: connect_clicked triggered at line 354");
             popover_clone.popup();
         });
         btn.add_css_class("menubar-button");
@@ -880,7 +903,7 @@ pub fn build_ui(app: &Application) {
         } else {
             theme
         };
-        
+
         let mut active_header = String::new();
         let mut active_body = String::new();
         if let Some(active_idx) = s.live_active_index {
@@ -968,7 +991,7 @@ pub fn build_ui(app: &Application) {
         let btn_vis = preview_toggle_visual.clone();
         let btn_txt = preview_toggle_text.clone();
         preview_toggle_visual.connect_clicked(move |_| {
-                println!("DEBUG: connect_clicked triggered at line 696");
+            println!("DEBUG: connect_clicked triggered at line 696");
             stack.set_visible_child_name("visual");
             btn_vis.add_css_class("view-toggle-btn-active");
             btn_txt.remove_css_class("view-toggle-btn-active");
@@ -978,7 +1001,7 @@ pub fn build_ui(app: &Application) {
         let btn_vis = preview_toggle_visual.clone();
         let btn_txt = preview_toggle_text.clone();
         preview_toggle_text.connect_clicked(move |_| {
-                println!("DEBUG: connect_clicked triggered at line 706");
+            println!("DEBUG: connect_clicked triggered at line 706");
             stack.set_visible_child_name("text");
             btn_txt.add_css_class("view-toggle-btn-active");
             btn_vis.remove_css_class("view-toggle-btn-active");
@@ -988,8 +1011,9 @@ pub fn build_ui(app: &Application) {
         let btn_vis = live_toggle_visual.clone();
         let btn_txt = live_toggle_text.clone();
         let queue_list = live_scrolled_window.clone();
-        live_toggle_visual.connect_clicked(move |_| { println!("DEBUG: live_toggle_visual clicked!");
-                println!("DEBUG: connect_clicked triggered at line 717");
+        live_toggle_visual.connect_clicked(move |_| {
+            println!("DEBUG: live_toggle_visual clicked!");
+            println!("DEBUG: connect_clicked triggered at line 717");
             stack.set_visible_child_name("visual");
             btn_vis.add_css_class("view-toggle-btn-active");
             btn_txt.remove_css_class("view-toggle-btn-active");
@@ -1000,8 +1024,9 @@ pub fn build_ui(app: &Application) {
         let btn_vis = live_toggle_visual.clone();
         let btn_txt = live_toggle_text.clone();
         let queue_list = live_scrolled_window.clone();
-        live_toggle_text.connect_clicked(move |_| { println!("DEBUG: live_toggle_text clicked!");
-                println!("DEBUG: connect_clicked triggered at line 730");
+        live_toggle_text.connect_clicked(move |_| {
+            println!("DEBUG: live_toggle_text clicked!");
+            println!("DEBUG: connect_clicked triggered at line 730");
             stack.set_visible_child_name("text");
             btn_txt.add_css_class("view-toggle-btn-active");
             btn_vis.remove_css_class("view-toggle-btn-active");
@@ -1048,7 +1073,11 @@ pub fn build_ui(app: &Application) {
             ndi_out.update_slide(
                 active_header,
                 active_body,
-                if theme == "custom" { s.custom_background_path.clone().unwrap_or_default() } else { theme.to_string() },
+                if theme == "custom" {
+                    s.custom_background_path.clone().unwrap_or_default()
+                } else {
+                    theme.to_string()
+                },
                 s.blackout,
                 s.logo_mode,
                 s.clearout,
@@ -1211,10 +1240,14 @@ pub fn build_ui(app: &Application) {
 
             if is_keyword {
                 entry.set_primary_icon_name(Some("edit-find-symbolic"));
-                entry.set_primary_icon_tooltip_text(Some("Searching by Keyword (Click to toggle reference search)"));
+                entry.set_primary_icon_tooltip_text(Some(
+                    "Searching by Keyword (Click to toggle reference search)",
+                ));
             } else {
                 entry.set_primary_icon_name(Some("view-list-symbolic"));
-                entry.set_primary_icon_tooltip_text(Some("Searching by Reference (Click to toggle keyword search)"));
+                entry.set_primary_icon_tooltip_text(Some(
+                    "Searching by Reference (Click to toggle keyword search)",
+                ));
             }
 
             entry.activate();
@@ -1269,10 +1302,7 @@ pub fn build_ui(app: &Application) {
     let books_list_box = ListBox::builder().build();
     let books = crate::db::get_all_books();
     for book in &books {
-        let row_lbl = Label::builder()
-            .label(book)
-            .xalign(0.0)
-            .build();
+        let row_lbl = Label::builder().label(book).xalign(0.0).build();
         row_lbl.add_css_class("sidebar-row");
         books_list_box.append(&row_lbl);
     }
@@ -1340,9 +1370,7 @@ pub fn build_ui(app: &Application) {
     scriptures_table_header.append(&v_col3);
     scriptures_main.append(&scriptures_table_header);
 
-    let scriptures_list_box = ListBox::builder()
-        .activate_on_single_click(false)
-        .build();
+    let scriptures_list_box = ListBox::builder().activate_on_single_click(false).build();
     let scriptures_scrolled = ScrolledWindow::builder()
         .hscrollbar_policy(PolicyType::Never)
         .vscrollbar_policy(PolicyType::Automatic)
@@ -1377,9 +1405,7 @@ pub fn build_ui(app: &Application) {
         .margin_end(10)
         .build();
 
-    let import_media_btn = Button::builder()
-        .label("Import Media")
-        .build();
+    let import_media_btn = Button::builder().label("Import Media").build();
     import_media_btn.add_css_class("tab-action-button");
     media_toolbar.append(&import_media_btn);
     media_main.append(&media_toolbar);
@@ -1428,7 +1454,14 @@ pub fn build_ui(app: &Application) {
     // Load persisted media cards from SQLite
     let persisted_media = crate::db::get_all_media();
     for (name, path) in &persisted_media {
-        add_media_card(&media_flow, &themes_flow, name, path, &state, &update_slide_theme_classes);
+        add_media_card(
+            &media_flow,
+            &themes_flow,
+            name,
+            path,
+            &state,
+            &update_slide_theme_classes,
+        );
     }
 
     resource_stack.add_named(&media_main, Some("media"));
@@ -1441,7 +1474,10 @@ pub fn build_ui(app: &Application) {
     let scriptures_list_box_clone = scriptures_list_box.clone();
 
     import_media_btn.connect_clicked(move |_| {
-        if let Some(window) = scriptures_list_box_clone.root().and_then(|r| r.downcast::<gtk::Window>().ok()) {
+        if let Some(window) = scriptures_list_box_clone
+            .root()
+            .and_then(|r| r.downcast::<gtk::Window>().ok())
+        {
             let dialog = gtk::FileChooserNative::new(
                 Some("Import Media File"),
                 Some(&window),
@@ -1464,12 +1500,16 @@ pub fn build_ui(app: &Application) {
             let update_theme = update_theme_clone.clone();
 
             dialog.connect_response(move |d, res| {
-                println!("DEBUG: connect_response triggered. Response type: {:?}", res);
+                println!(
+                    "DEBUG: connect_response triggered. Response type: {:?}",
+                    res
+                );
                 if res == gtk::ResponseType::Accept {
                     if let Some(file) = d.file() {
                         if let Some(path) = file.path() {
                             let path_str = path.to_string_lossy().to_string();
-                            let filename = path.file_name()
+                            let filename = path
+                                .file_name()
                                 .map(|n| n.to_string_lossy().to_string())
                                 .unwrap_or_else(|| "Imported Media".to_string());
 
@@ -1501,7 +1541,14 @@ pub fn build_ui(app: &Application) {
                             crate::db::add_media(&filename, &abs_path);
 
                             // Add to UI
-                            add_media_card(&media_flow, &themes_flow, &filename, &abs_path, &state, &update_theme);
+                            add_media_card(
+                                &media_flow,
+                                &themes_flow,
+                                &filename,
+                                &abs_path,
+                                &state,
+                                &update_theme,
+                            );
                         }
                     }
                 }
@@ -1558,11 +1605,13 @@ pub fn build_ui(app: &Application) {
     let theme_card_blue = create_theme_card("Royal Blue", "theme-royal-blue");
     let theme_card_green = create_theme_card("Forest Green", "theme-forest-green");
     let theme_card_slate = create_theme_card("Dark Slate", "theme-dark-slate");
+    let theme_card_black = create_theme_card("Black", "theme-black");
 
     themes_flow.insert(&theme_card_red, -1);
     themes_flow.insert(&theme_card_blue, -1);
     themes_flow.insert(&theme_card_green, -1);
     themes_flow.insert(&theme_card_slate, -1);
+    themes_flow.insert(&theme_card_black, -1);
 
     resource_stack.add_named(&themes_scrolled, Some("themes"));
 
@@ -1585,9 +1634,7 @@ pub fn build_ui(app: &Application) {
     // ==========================================
 
     // Shared context menu popover for scripture copying to prevent duplicate parenting assertions
-    let context_popover = Popover::builder()
-        .has_arrow(true)
-        .build();
+    let context_popover = Popover::builder().has_arrow(true).build();
     let context_box = Box::builder()
         .orientation(Orientation::Vertical)
         .spacing(0)
@@ -1633,8 +1680,9 @@ pub fn build_ui(app: &Application) {
         let context_popover = context_popover.clone();
         let text_to_copy = text_to_copy.clone();
 
-        move || { println!("DEBUG: Closure executing...");
-                println!("DEBUG: move || closure triggered at line 1104");
+        move || {
+            println!("DEBUG: Closure executing...");
+            println!("DEBUG: move || closure triggered at line 1104");
             // Unparent the shared context popover first to prevent critical GTK assertion failures
             if context_popover.parent().is_some() {
                 context_popover.unparent();
@@ -1713,10 +1761,7 @@ pub fn build_ui(app: &Application) {
                         context_popover_clone.set_parent(&row_clone);
 
                         context_popover_clone.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
-                            x as i32,
-                            y as i32,
-                            1,
-                            1,
+                            x as i32, y as i32, 1, 1,
                         )));
                         context_popover_clone.popup();
                     });
@@ -1741,11 +1786,17 @@ pub fn build_ui(app: &Application) {
 
             if let Some(row) = target_row {
                 scriptures_list_box.select_row(Some(&row));
-                let row_clone = row.clone(); gtk::glib::idle_add_local_once(move || { row_clone.grab_focus(); });
+                let row_clone = row.clone();
+                gtk::glib::idle_add_local_once(move || {
+                    row_clone.grab_focus();
+                });
             } else {
                 if let Some(row) = scriptures_list_box.row_at_index(0) {
                     scriptures_list_box.select_row(Some(&row));
-                    let row_clone = row.clone(); gtk::glib::idle_add_local_once(move || { row_clone.grab_focus(); });
+                    let row_clone = row.clone();
+                    gtk::glib::idle_add_local_once(move || {
+                        row_clone.grab_focus();
+                    });
                 }
             }
         }
@@ -1753,8 +1804,6 @@ pub fn build_ui(app: &Application) {
 
     // Load initial verses
     populate_verses_table();
-
-
 
     // Callback when selecting a scripture verse in the table
 
@@ -1766,7 +1815,7 @@ pub fn build_ui(app: &Application) {
     let state_clone = state.clone();
 
     scriptures_list_box.connect_row_selected(move |_, row| {
-                println!("DEBUG: connect_row_selected triggered at line 1243");
+        println!("DEBUG: connect_row_selected triggered at line 1243");
         if let Some(row) = row {
             let row_idx = row.index() as usize;
             let mut s = state_clone.borrow_mut();
@@ -1786,14 +1835,17 @@ pub fn build_ui(app: &Application) {
             if let Some((orig_idx, verse)) = verse_data {
                 s.selected_verse_index = Some(orig_idx);
                 s.current_selection_type = 0; // Scripture
-                
-                println!("DEBUG: Selected verse: {} ({})", verse.reference, verse.translation);
+
+                println!(
+                    "DEBUG: Selected verse: {} ({})",
+                    verse.reference, verse.translation
+                );
                 println!("DEBUG: Verse text length: {} chars", verse.text.len());
                 println!("DEBUG: Verse text: {}", verse.text);
 
                 let ref_str = format!("{} ({})", verse.reference, verse.translation);
                 preview_title_label_clone.set_text(&format!("Preview - {}", ref_str));
-                
+
                 s.preview_header = ref_str;
                 s.preview_body = verse.text.clone();
 
@@ -1806,9 +1858,7 @@ pub fn build_ui(app: &Application) {
                 preview_text_body_label_clone.set_text(&verse.text);
                 status_lbl_clone.set_text(&format!(
                     "{}  |  {} (Selected)  |  {} references available",
-                    verse.translation,
-                    verse.reference,
-                    verses_len
+                    verse.translation, verse.reference, verses_len
                 ));
             }
         }
@@ -1831,8 +1881,9 @@ pub fn build_ui(app: &Application) {
         let state = state_clone.clone();
         let ndi_out = ndi_out.clone();
 
-        move || { println!("DEBUG: Closure executing...");
-                println!("DEBUG: move || closure triggered at line 1308");
+        move || {
+            println!("DEBUG: Closure executing...");
+            println!("DEBUG: move || closure triggered at line 1308");
             // Clear current listbox
             while let Some(child) = live_slides_list.first_child() {
                 live_slides_list.remove(&child);
@@ -1840,7 +1891,14 @@ pub fn build_ui(app: &Application) {
 
             let (live_slides, live_active_index, live_title, blackout_val, logo_val, clearout_val) = {
                 let s = state.borrow();
-                (s.live_slides.clone(), s.live_active_index, s.live_title.clone(), s.blackout, s.logo_mode, s.clearout)
+                (
+                    s.live_slides.clone(),
+                    s.live_active_index,
+                    s.live_title.clone(),
+                    s.blackout,
+                    s.logo_mode,
+                    s.clearout,
+                )
             };
 
             // Update title
@@ -1916,7 +1974,8 @@ pub fn build_ui(app: &Application) {
                 s.selected_theme.to_string()
             };
 
-            let live_changed = s.live_current_header != active_header || s.live_current_body != active_body;
+            let live_changed =
+                s.live_current_header != active_header || s.live_current_body != active_body;
             if live_changed {
                 s.live_prev_header = s.live_current_header.clone();
                 s.live_prev_body = s.live_current_body.clone();
@@ -1982,7 +2041,8 @@ pub fn build_ui(app: &Application) {
             let state = state.clone();
             let populate = populate_verses_table.clone();
             let entry = script_search.clone();
-            move || { println!("DEBUG: Closure executing...");
+            move || {
+                println!("DEBUG: Closure executing...");
                 println!("DEBUG: move || closure triggered at line 1422");
                 let query = entry.text().to_string();
                 let active_trans = state.borrow().selected_translation;
@@ -2116,7 +2176,7 @@ pub fn build_ui(app: &Application) {
     let populate_verses_table_clone = populate_verses_table.clone();
     let script_search_clone = script_search.clone();
     translations_list_box.connect_row_selected(move |listbox, row| {
-                println!("DEBUG: connect_row_selected triggered at line 1541");
+        println!("DEBUG: connect_row_selected triggered at line 1541");
         if let Some(row) = row {
             let row_idx_i32 = row.index();
             let row_idx = row_idx_i32 as usize;
@@ -2162,8 +2222,9 @@ pub fn build_ui(app: &Application) {
         let preview_title_label = preview_title_label.clone();
         let preview_drawing_area = preview_drawing_area.clone();
 
-        move || { println!("DEBUG: Closure executing...");
-                println!("DEBUG: move || closure triggered at line 1589");
+        move || {
+            println!("DEBUG: Closure executing...");
+            println!("DEBUG: move || closure triggered at line 1589");
             while let Some(child) = song_stanzas_list_box.first_child() {
                 song_stanzas_list_box.remove(&child);
             }
@@ -2218,7 +2279,7 @@ pub fn build_ui(app: &Application) {
     let populate_song_stanzas_clone = populate_song_stanzas.clone();
     let state_clone = state.clone();
     songs_list_box.connect_row_selected(move |_, row| {
-                println!("DEBUG: connect_row_selected triggered at line 1643");
+        println!("DEBUG: connect_row_selected triggered at line 1643");
         if let Some(row) = row {
             let row_idx = row.index() as usize;
             let mut s = state_clone.borrow_mut();
@@ -2234,7 +2295,7 @@ pub fn build_ui(app: &Application) {
     let preview_drawing_area_clone = preview_drawing_area.clone();
 
     song_stanzas_list_box.connect_row_selected(move |_, row| {
-                println!("DEBUG: connect_row_selected triggered at line 1660");
+        println!("DEBUG: connect_row_selected triggered at line 1660");
         if let Some(row) = row {
             let row_idx = row.index() as usize;
             let mut s = state_clone.borrow_mut();
@@ -2253,7 +2314,7 @@ pub fn build_ui(app: &Application) {
                     ));
                     s.preview_header = format!("{} - Stanza {}", title, row_idx + 1);
                     s.preview_body = text;
-                    
+
                     drop(s);
                     preview_drawing_area_clone.queue_draw();
                 }
@@ -2298,7 +2359,7 @@ pub fn build_ui(app: &Application) {
     let state_clone = state.clone();
     let update_live_layout_clone3 = update_live_layout.clone();
     live_slides_list.connect_row_selected(move |_, row| {
-                println!("DEBUG: connect_row_selected triggered at line 1723");
+        println!("DEBUG: connect_row_selected triggered at line 1723");
         if let Some(row) = row {
             let row_idx = row.index() as usize;
             let mut s = state_clone.borrow_mut();
@@ -2312,8 +2373,9 @@ pub fn build_ui(app: &Application) {
     // GO LIVE
     let state_clone = state.clone();
     let update_live_layout_clone4 = update_live_layout.clone();
-    go_live_btn.connect_clicked(move |_| { println!("DEBUG: go_live_btn clicked!");
-                println!("DEBUG: connect_clicked triggered at line 1738");
+    go_live_btn.connect_clicked(move |_| {
+        println!("DEBUG: go_live_btn clicked!");
+        println!("DEBUG: connect_clicked triggered at line 1738");
         let mut s = state_clone.borrow_mut();
         if s.current_selection_type == 0 {
             // Go live with only the single selected verse
@@ -2381,7 +2443,8 @@ pub fn build_ui(app: &Application) {
     let state_clone = state.clone();
     let update_live_layout_clone5 = update_live_layout.clone();
     let update_slide_theme_classes_clone = update_slide_theme_classes.clone();
-    black_btn.connect_clicked(move |btn| { println!("DEBUG: black_btn clicked!");
+    black_btn.connect_clicked(move |btn| {
+        println!("DEBUG: black_btn clicked!");
         let mut s = state_clone.borrow_mut();
         s.blackout = !s.blackout;
         let is_on = s.blackout;
@@ -2398,7 +2461,8 @@ pub fn build_ui(app: &Application) {
     // CLEAR — clears live text and shows active visual state on button
     let state_clone = state.clone();
     let update_live_layout_clone6 = update_live_layout.clone();
-    clear_btn.connect_clicked(move |btn| { println!("DEBUG: clear_btn clicked!");
+    clear_btn.connect_clicked(move |btn| {
+        println!("DEBUG: clear_btn clicked!");
         let mut s = state_clone.borrow_mut();
         s.clearout = !s.clearout;
         let is_on = s.clearout;
@@ -2414,8 +2478,9 @@ pub fn build_ui(app: &Application) {
     // LOGO
     let state_clone = state.clone();
     let update_live_layout_clone7 = update_live_layout.clone();
-    logo_btn.connect_clicked(move |_| { println!("DEBUG: logo_btn clicked!");
-                println!("DEBUG: connect_clicked triggered at line 1840");
+    logo_btn.connect_clicked(move |_| {
+        println!("DEBUG: logo_btn clicked!");
+        println!("DEBUG: connect_clicked triggered at line 1840");
         let mut s = state_clone.borrow_mut();
         s.logo_mode = !s.logo_mode;
         drop(s);
@@ -2460,6 +2525,12 @@ pub fn build_ui(app: &Application) {
     connect_theme_click(
         &theme_card_slate,
         "dark-slate",
+        state.clone(),
+        update_slide_theme_classes_clone2.clone(),
+    );
+    connect_theme_click(
+        &theme_card_black,
+        "black",
         state.clone(),
         update_slide_theme_classes_clone2,
     );
@@ -2513,15 +2584,15 @@ pub fn build_ui(app: &Application) {
 
     // MOCK DIALOGS FOR REMAINING BUTTONS
     new_btn.connect_clicked(move |_| {
-                println!("DEBUG: connect_clicked triggered at line 1938");
+        println!("DEBUG: connect_clicked triggered at line 1938");
         println!("Toolbar Action: New Presentation/Scripture triggered");
     });
     open_btn.connect_clicked(move |_| {
-                println!("DEBUG: connect_clicked triggered at line 1942");
+        println!("DEBUG: connect_clicked triggered at line 1942");
         println!("Toolbar Action: Open File triggered");
     });
     save_btn.connect_clicked(move |_| {
-                println!("DEBUG: connect_clicked triggered at line 1946");
+        println!("DEBUG: connect_clicked triggered at line 1946");
         println!("Toolbar Action: Save current set triggered");
     });
     // --- APPLICATION WINDOW CREATION ---

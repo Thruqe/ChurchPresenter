@@ -1,10 +1,10 @@
+use gtk::cairo::{Context, FontSlant, FontWeight, Format, ImageSurface};
+use gtk::gdk_pixbuf::Pixbuf;
+use gtk::prelude::*;
+use ndi::{FourCCVideoType, FrameFormatType, VideoData};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use gtk::prelude::*;
-use gtk::gdk_pixbuf::Pixbuf;
-use gtk::cairo::{ImageSurface, Format, Context, FontSlant, FontWeight};
-use ndi::{FourCCVideoType, FrameFormatType, VideoData};
 
 #[derive(Debug, Clone)]
 pub struct NdiSlideData {
@@ -42,6 +42,7 @@ fn draw_background(
                 "royal-blue" => cr.set_source_rgb(0.0, 0.1, 0.4),
                 "forest-green" => cr.set_source_rgb(0.0, 0.3, 0.1),
                 "dark-slate" => cr.set_source_rgb(0.1, 0.12, 0.15),
+                "black" => cr.set_source_rgb(0.0, 0.0, 0.0),
                 _ => cr.set_source_rgb(0.0, 0.0, 0.0),
             }
             let _ = cr.paint();
@@ -49,13 +50,7 @@ fn draw_background(
     }
 }
 
-fn draw_single_slide_text(
-    cr: &Context,
-    width: f64,
-    height: f64,
-    slide: &NdiSlideData,
-    alpha: f64,
-) {
+fn draw_single_slide_text(cr: &Context, width: f64, height: f64, slide: &NdiSlideData, alpha: f64) {
     cr.select_font_face("Tahoma", FontSlant::Normal, FontWeight::Bold);
 
     if slide.logo_mode && !slide.blackout {
@@ -64,24 +59,30 @@ fn draw_single_slide_text(
 
         let logo_cross = "✝";
         if let Ok(ext) = cr.text_extents(logo_cross) {
-            cr.move_to((width - ext.width()) / 2.0, (height - ext.height()) / 2.0 - height * 0.037);
+            cr.move_to(
+                (width - ext.width()) / 2.0,
+                (height - ext.height()) / 2.0 - height * 0.037,
+            );
             let _ = cr.show_text(logo_cross);
         }
 
         cr.set_font_size(height * 0.037);
         let logo_lbl = "EasyWorship - Standby";
         if let Ok(ext) = cr.text_extents(logo_lbl) {
-            cr.move_to((width - ext.width()) / 2.0, (height - ext.height()) / 2.0 + height * 0.055);
+            cr.move_to(
+                (width - ext.width()) / 2.0,
+                (height - ext.height()) / 2.0 + height * 0.055,
+            );
             let _ = cr.show_text(logo_lbl);
         }
     } else if !slide.blackout && !slide.clearout {
-        let body_font_size = height * 0.045;
-        let header_font_size = height * 0.030;
-        
+        let body_font_size = height * 0.06;
+        let header_font_size = height * 0.050;
+
         // Wrap body text
         let max_width = width - width * 0.15;
         let mut wrapped_lines = Vec::new();
-        
+
         cr.set_font_size(body_font_size);
         cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
 
@@ -108,7 +109,7 @@ fn draw_single_slide_text(
                 wrapped_lines.push(current_line);
             }
         }
-        
+
         // Calculate vertical metrics
         let line_spacing = height * 0.06;
         let total_body_height = if wrapped_lines.is_empty() {
@@ -116,10 +117,10 @@ fn draw_single_slide_text(
         } else {
             (wrapped_lines.len() - 1) as f64 * line_spacing + body_font_size
         };
-        
+
         // Center the body block vertically
         let start_y = (height - total_body_height) / 2.0;
-        
+
         // Draw body lines centered
         let mut current_y = start_y + body_font_size * 0.8;
         for line in &wrapped_lines {
@@ -129,7 +130,7 @@ fn draw_single_slide_text(
             }
             current_y += line_spacing;
         }
-        
+
         // Draw header aligned right
         cr.set_font_size(header_font_size);
         cr.set_source_rgba(0.85, 0.85, 0.85, alpha);
@@ -140,7 +141,7 @@ fn draw_single_slide_text(
             let _ = cr.show_text(&slide.header);
         }
     } else if slide.clearout && !slide.blackout {
-        let header_font_size = height * 0.040;
+        let header_font_size = height * 0.050;
         cr.set_font_size(header_font_size);
         cr.set_source_rgba(0.85, 0.85, 0.85, alpha);
         if let Ok(ext) = cr.text_extents(&slide.header) {
@@ -190,7 +191,7 @@ impl NdiOutput {
 
             loop {
                 // Sleep for 10ms to check for state updates quickly without burning CPU
-                thread::sleep(Duration::from_millis(10));
+                thread::sleep(Duration::from_millis(33));
 
                 // Get current slide data
                 let slide_opt = {
@@ -212,7 +213,10 @@ impl NdiOutput {
                     };
 
                     if slide_changed {
-                        println!("DEBUG: NDI loop - slide changed detected! Header: '{}', Theme: '{}'", slide.header, slide.theme);
+                        println!(
+                            "DEBUG: NDI loop - slide changed detected! Header: '{}', Theme: '{}'",
+                            slide.header, slide.theme
+                        );
                         if let Some(ref prev) = last_slide {
                             trans_prev_slide = Some(prev.clone());
                             trans_start = Some(std::time::Instant::now());
@@ -233,16 +237,26 @@ impl NdiOutput {
                         }
                     }
 
-                    let time_for_keep_alive = last_sent_time.elapsed() >= Duration::from_millis(1000);
+                    let time_for_keep_alive =
+                        last_sent_time.elapsed() >= Duration::from_millis(1000);
 
                     if slide_changed || is_animating || time_for_keep_alive {
                         // Ensure active background is loaded/scaled if needed
                         let path = std::path::Path::new(&slide.theme);
                         if path.exists() && path.is_file() {
-                            if slide.theme != cached_background_path || cached_background_pixbuf.is_none() {
-                                println!("DEBUG: NDI background - cache miss: loading and scaling custom file: {}", slide.theme);
+                            if slide.theme != cached_background_path
+                                || cached_background_pixbuf.is_none()
+                            {
+                                println!(
+                                    "DEBUG: NDI background - cache miss: loading and scaling custom file: {}",
+                                    slide.theme
+                                );
                                 if let Ok(pixbuf) = Pixbuf::from_file(&slide.theme) {
-                                    if let Some(scaled) = pixbuf.scale_simple(width as i32, height as i32, gtk::gdk_pixbuf::InterpType::Bilinear) {
+                                    if let Some(scaled) = pixbuf.scale_simple(
+                                        width as i32,
+                                        height as i32,
+                                        gtk::gdk_pixbuf::InterpType::Bilinear,
+                                    ) {
                                         cached_background_pixbuf = Some(scaled);
                                         cached_background_path = slide.theme.clone();
                                     }
@@ -251,21 +265,48 @@ impl NdiOutput {
                         }
 
                         // Create cairo ImageSurface to render slide to
-                        let mut surface = ImageSurface::create(Format::ARgb32, width as i32, height as i32).unwrap();
+                        let mut surface =
+                            ImageSurface::create(Format::ARgb32, width as i32, height as i32)
+                                .unwrap();
                         let cr = Context::new(&surface).unwrap();
 
                         // 1. Draw target background instantly
-                        draw_background(&cr, width as f64, height as f64, &slide.theme, slide.blackout, &cached_background_pixbuf);
+                        draw_background(
+                            &cr,
+                            width as f64,
+                            height as f64,
+                            &slide.theme,
+                            slide.blackout,
+                            &cached_background_pixbuf,
+                        );
 
                         // 2. Draw text
                         if is_animating {
                             if let Some(ref prev) = trans_prev_slide {
                                 // Draw previous slide text fading out
-                                draw_single_slide_text(&cr, width as f64, height as f64, prev, 1.0 - progress);
+                                draw_single_slide_text(
+                                    &cr,
+                                    width as f64,
+                                    height as f64,
+                                    prev,
+                                    1.0 - progress,
+                                );
                                 // Draw new slide text fading in
-                                draw_single_slide_text(&cr, width as f64, height as f64, &slide, progress);
+                                draw_single_slide_text(
+                                    &cr,
+                                    width as f64,
+                                    height as f64,
+                                    &slide,
+                                    progress,
+                                );
                             } else {
-                                draw_single_slide_text(&cr, width as f64, height as f64, &slide, 1.0);
+                                draw_single_slide_text(
+                                    &cr,
+                                    width as f64,
+                                    height as f64,
+                                    &slide,
+                                    1.0,
+                                );
                             }
                         } else {
                             draw_single_slide_text(&cr, width as f64, height as f64, &slide, 1.0);
@@ -281,7 +322,10 @@ impl NdiOutput {
                                 pixel_buffer.copy_from_slice(&*data);
                             }
                             Err(e) => {
-                                println!("DEBUG: NDI - failed to access cairo surface data: {:?}", e);
+                                println!(
+                                    "DEBUG: NDI - failed to access cairo surface data: {:?}",
+                                    e
+                                );
                             }
                         }
 
@@ -293,7 +337,7 @@ impl NdiOutput {
                         width as i32,
                         height as i32,
                         FourCCVideoType::BGRA,
-                        30,
+                        15,
                         1,
                         FrameFormatType::Progressive,
                         0,
@@ -306,9 +350,7 @@ impl NdiOutput {
             }
         });
 
-        Self {
-            current_slide,
-        }
+        Self { current_slide }
     }
 
     pub fn update_slide(
