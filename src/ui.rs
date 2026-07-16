@@ -1125,7 +1125,7 @@ pub fn build_ui(app: &Application) {
         .hexpand(true)
         .vexpand(true)
         .build();
-    live_text_container.add_css_class("text-output-container");
+    live_text_container.add_css_class("preview-text-green");
 
     let live_text_ref_label = Label::builder()
         .label("LIVE OUTPUT MONITOR")
@@ -1206,8 +1206,8 @@ pub fn build_ui(app: &Application) {
             stack.set_visible_child_name("text");
             btn_txt.add_css_class("view-toggle-btn-active");
             btn_vis.remove_css_class("view-toggle-btn-active");
-            queue_list.set_visible(true);
-            stack.set_visible(false);
+            queue_list.set_visible(false);
+            stack.set_visible(true);
         });
     }
 
