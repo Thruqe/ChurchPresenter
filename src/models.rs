@@ -36,6 +36,8 @@ pub struct AppState {
     pub blackout: bool,
     pub clearout: bool,
     pub logo_mode: bool,
+    pub go_live_active: bool,
+    pub logo_image_path: Option<String>,
 
     // Custom media themes
     pub custom_themes: Vec<(String, String)>, // (name, path)

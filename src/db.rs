@@ -284,3 +284,36 @@ pub fn delete_theme(path: &str) {
         let _ = conn.execute("DELETE FROM themes WHERE path = ?", params![path]);
     }
 }
+
+pub fn init_config_table() {
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
+        let _ = conn.execute(
+            "CREATE TABLE IF NOT EXISTS config (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )",
+            [],
+        );
+    }
+}
+
+pub fn set_config_value(key: &str, value: &str) {
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
+        let _ = conn.execute(
+            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+            params![key, value],
+        );
+    }
+}
+
+pub fn get_config_value(key: &str) -> Option<String> {
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
+        if let Ok(mut stmt) = conn.prepare("SELECT value FROM config WHERE key = ?") {
+            if let Ok(val) = stmt.query_row(params![key], |row| row.get::<_, String>(0)) {
+                return Some(val);
+            }
+        }
+    }
+    None
+}
+

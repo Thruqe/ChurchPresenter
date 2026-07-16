@@ -14,6 +14,8 @@ pub struct NdiSlideData {
     pub blackout: bool,
     pub logo_mode: bool,
     pub clearout: bool,
+    pub go_live: bool,
+    pub logo_image_path: Option<String>,
 }
 
 #[derive(Clone)]
@@ -54,26 +56,28 @@ fn draw_single_slide_text(cr: &Context, width: f64, height: f64, slide: &NdiSlid
     cr.select_font_face("Tahoma", FontSlant::Normal, FontWeight::Bold);
 
     if slide.logo_mode && !slide.blackout {
-        cr.set_font_size(height * 0.074);
-        cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
+        if slide.logo_image_path.is_none() {
+            cr.set_font_size(height * 0.074);
+            cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
 
-        let logo_cross = "✝";
-        if let Ok(ext) = cr.text_extents(logo_cross) {
-            cr.move_to(
-                (width - ext.width()) / 2.0,
-                (height - ext.height()) / 2.0 - height * 0.037,
-            );
-            let _ = cr.show_text(logo_cross);
-        }
+            let logo_cross = "✝";
+            if let Ok(ext) = cr.text_extents(logo_cross) {
+                cr.move_to(
+                    (width - ext.width()) / 2.0,
+                    (height - ext.height()) / 2.0 - height * 0.037,
+                );
+                let _ = cr.show_text(logo_cross);
+            }
 
-        cr.set_font_size(height * 0.037);
-        let logo_lbl = "EasyWorship - Standby";
-        if let Ok(ext) = cr.text_extents(logo_lbl) {
-            cr.move_to(
-                (width - ext.width()) / 2.0,
-                (height - ext.height()) / 2.0 + height * 0.055,
-            );
-            let _ = cr.show_text(logo_lbl);
+            cr.set_font_size(height * 0.037);
+            let logo_lbl = "EasyWorship - Standby";
+            if let Ok(ext) = cr.text_extents(logo_lbl) {
+                cr.move_to(
+                    (width - ext.width()) / 2.0,
+                    (height - ext.height()) / 2.0 + height * 0.055,
+                );
+                let _ = cr.show_text(logo_lbl);
+            }
         }
     } else if !slide.blackout && !slide.clearout {
         let body_font_size = height * 0.06;
@@ -141,13 +145,7 @@ fn draw_single_slide_text(cr: &Context, width: f64, height: f64, slide: &NdiSlid
             let _ = cr.show_text(&slide.header);
         }
     } else if slide.clearout && !slide.blackout {
-        let header_font_size = height * 0.050;
-        cr.set_font_size(header_font_size);
-        cr.set_source_rgba(0.85, 0.85, 0.85, alpha);
-        if let Ok(ext) = cr.text_extents(&slide.header) {
-            cr.move_to((width - ext.width()) / 2.0, (height + ext.height()) / 2.0);
-            let _ = cr.show_text(&slide.header);
-        }
+        // Clearout: show only background, no text drawn
     }
 }
 
@@ -242,26 +240,35 @@ impl NdiOutput {
 
                     if slide_changed || is_animating || time_for_keep_alive {
                         // Ensure active background is loaded/scaled if needed
-                        let path = std::path::Path::new(&slide.theme);
+                        let active_bg_path = if slide.logo_mode {
+                            slide.logo_image_path.as_deref().unwrap_or("")
+                        } else {
+                            &slide.theme
+                        };
+
+                        let path = std::path::Path::new(active_bg_path);
                         if path.exists() && path.is_file() {
-                            if slide.theme != cached_background_path
+                            if active_bg_path != cached_background_path
                                 || cached_background_pixbuf.is_none()
                             {
                                 println!(
-                                    "DEBUG: NDI background - cache miss: loading and scaling custom file: {}",
-                                    slide.theme
+                                    "DEBUG: NDI background - cache miss: loading and scaling file: {}",
+                                    active_bg_path
                                 );
-                                if let Ok(pixbuf) = Pixbuf::from_file(&slide.theme) {
+                                if let Ok(pixbuf) = Pixbuf::from_file(active_bg_path) {
                                     if let Some(scaled) = pixbuf.scale_simple(
                                         width as i32,
                                         height as i32,
                                         gtk::gdk_pixbuf::InterpType::Bilinear,
                                     ) {
                                         cached_background_pixbuf = Some(scaled);
-                                        cached_background_path = slide.theme.clone();
+                                        cached_background_path = active_bg_path.to_string();
                                     }
                                 }
                             }
+                        } else {
+                            cached_background_pixbuf = None;
+                            cached_background_path = String::new();
                         }
 
                         // Create cairo ImageSurface to render slide to
@@ -275,7 +282,7 @@ impl NdiOutput {
                             &cr,
                             width as f64,
                             height as f64,
-                            &slide.theme,
+                            if slide.logo_mode { "" } else { &slide.theme },
                             slide.blackout,
                             &cached_background_pixbuf,
                         );
@@ -332,20 +339,22 @@ impl NdiOutput {
                         last_sent_time = std::time::Instant::now();
                     }
 
-                    // Send NDI frame (uses existing pixel_buffer)
-                    let video_data = VideoData::from_buffer(
-                        width as i32,
-                        height as i32,
-                        FourCCVideoType::BGRA,
-                        15,
-                        1,
-                        FrameFormatType::Progressive,
-                        0,
-                        (width * 4) as i32,
-                        None,
-                        &mut pixel_buffer,
-                    );
-                    sender.send_video(&video_data);
+                    // Send NDI frame (uses existing pixel_buffer) only if go_live is true
+                    if slide.go_live {
+                        let video_data = VideoData::from_buffer(
+                            width as i32,
+                            height as i32,
+                            FourCCVideoType::BGRA,
+                            15,
+                            1,
+                            FrameFormatType::Progressive,
+                            0,
+                            (width * 4) as i32,
+                            None,
+                            &mut pixel_buffer,
+                        );
+                        sender.send_video(&video_data);
+                    }
                 }
             }
         });
@@ -361,6 +370,8 @@ impl NdiOutput {
         blackout: bool,
         logo_mode: bool,
         clearout: bool,
+        go_live: bool,
+        logo_image_path: Option<String>,
     ) {
         let mut lock = self.current_slide.lock().unwrap();
         *lock = Some(NdiSlideData {
@@ -370,6 +381,8 @@ impl NdiOutput {
             blackout,
             logo_mode,
             clearout,
+            go_live,
+            logo_image_path,
         });
     }
 }

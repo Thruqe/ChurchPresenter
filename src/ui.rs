@@ -11,8 +11,35 @@ use crate::db::{
 };
 use crate::models::{AppState, Verse};
 
-fn draw_background(cr: &gtk::cairo::Context, width: f64, height: f64, theme: &str, blackout: bool) {
+fn draw_background(
+    cr: &gtk::cairo::Context,
+    width: f64,
+    height: f64,
+    theme: &str,
+    blackout: bool,
+    logo_mode: bool,
+    logo_image_path: Option<&str>,
+) {
     if blackout {
+        cr.set_source_rgb(0.0, 0.0, 0.0);
+        let _ = cr.paint();
+    } else if logo_mode {
+        if let Some(logo_path) = logo_image_path {
+            let path = std::path::Path::new(logo_path);
+            if path.exists() && path.is_file() {
+                if let Ok(pixbuf) = gtk::gdk_pixbuf::Pixbuf::from_file(logo_path) {
+                    if let Some(scaled) = pixbuf.scale_simple(
+                        width as i32,
+                        height as i32,
+                        gtk::gdk_pixbuf::InterpType::Bilinear,
+                    ) {
+                        cr.set_source_pixbuf(&scaled, 0.0, 0.0);
+                        let _ = cr.paint();
+                        return;
+                    }
+                }
+            }
+        }
         cr.set_source_rgb(0.0, 0.0, 0.0);
         let _ = cr.paint();
     } else {
@@ -58,31 +85,34 @@ fn draw_single_slide_text(
     clearout: bool,
     blackout: bool,
     alpha: f64,
+    has_logo_image: bool,
 ) {
     use gtk::cairo::{FontSlant, FontWeight};
     cr.select_font_face("Tahoma", FontSlant::Normal, FontWeight::Bold);
 
     if logo_mode && !blackout {
-        cr.set_font_size(height * 0.074); // Scale font size based on height
-        cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
+        if !has_logo_image {
+            cr.set_font_size(height * 0.074); // Scale font size based on height
+            cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
 
-        let logo_cross = "✝";
-        if let Ok(ext) = cr.text_extents(logo_cross) {
-            cr.move_to(
-                (width - ext.width()) / 2.0,
-                (height - ext.height()) / 2.0 - height * 0.037,
-            );
-            let _ = cr.show_text(logo_cross);
-        }
+            let logo_cross = "✝";
+            if let Ok(ext) = cr.text_extents(logo_cross) {
+                cr.move_to(
+                    (width - ext.width()) / 2.0,
+                    (height - ext.height()) / 2.0 - height * 0.037,
+                );
+                let _ = cr.show_text(logo_cross);
+            }
 
-        cr.set_font_size(height * 0.037);
-        let logo_lbl = "EasyWorship - Standby";
-        if let Ok(ext) = cr.text_extents(logo_lbl) {
-            cr.move_to(
-                (width - ext.width()) / 2.0,
-                (height - ext.height()) / 2.0 + height * 0.055,
-            );
-            let _ = cr.show_text(logo_lbl);
+            cr.set_font_size(height * 0.037);
+            let logo_lbl = "EasyWorship - Standby";
+            if let Ok(ext) = cr.text_extents(logo_lbl) {
+                cr.move_to(
+                    (width - ext.width()) / 2.0,
+                    (height - ext.height()) / 2.0 + height * 0.055,
+                );
+                let _ = cr.show_text(logo_lbl);
+            }
         }
     } else if !blackout && !clearout {
         let body_font_size = height * 0.06;
@@ -156,14 +186,7 @@ fn draw_single_slide_text(
             let _ = cr.show_text(header);
         }
     } else if clearout && !blackout {
-        // Clearout (Header/reference only, centered in the middle since body is cleared)
-        let header_font_size = height * 0.050;
-        cr.set_font_size(header_font_size);
-        cr.set_source_rgba(0.85, 0.85, 0.85, alpha);
-        if let Ok(ext) = cr.text_extents(header) {
-            cr.move_to((width - ext.width()) / 2.0, (height + ext.height()) / 2.0);
-            let _ = cr.show_text(header);
-        }
+        // Clearout: show only background, no text drawn
     }
 }
 
@@ -180,9 +203,11 @@ fn draw_slide_cairo(
     blackout: bool,
     logo_mode: bool,
     clearout: bool,
+    logo_image_path: Option<&str>,
 ) {
+    let has_logo_image = logo_image_path.is_some();
     // 1. Draw target background instantly
-    draw_background(cr, width, height, theme, blackout);
+    draw_background(cr, width, height, theme, blackout, logo_mode, logo_image_path);
 
     // 2. Draw text with transition if active
     if let Some(start) = trans_start {
@@ -201,10 +226,20 @@ fn draw_slide_cairo(
                 clearout,
                 blackout,
                 1.0 - progress,
+                has_logo_image,
             );
             // Draw new slide text fading in
             draw_single_slide_text(
-                cr, width, height, header, body, logo_mode, clearout, blackout, progress,
+                cr,
+                width,
+                height,
+                header,
+                body,
+                logo_mode,
+                clearout,
+                blackout,
+                progress,
+                has_logo_image,
             );
             return;
         }
@@ -212,7 +247,16 @@ fn draw_slide_cairo(
 
     // Default: draw only target text at 100% opacity
     draw_single_slide_text(
-        cr, width, height, header, body, logo_mode, clearout, blackout, 1.0,
+        cr,
+        width,
+        height,
+        header,
+        body,
+        logo_mode,
+        clearout,
+        blackout,
+        1.0,
+        has_logo_image,
     );
 }
 
@@ -327,9 +371,15 @@ fn add_theme_card(
 
     let popover = Popover::builder().build();
     let popover_box = Box::builder().orientation(Orientation::Vertical).build();
+    
+    let use_logo_btn = Button::builder().label("Use as Logo").has_frame(false).build();
+    use_logo_btn.add_css_class("menu-item-button");
+    popover_box.append(&use_logo_btn);
+
     let delete_btn = Button::builder().label("Delete").has_frame(false).build();
     delete_btn.add_css_class("menu-item-button");
     popover_box.append(&delete_btn);
+    
     popover.set_child(Some(&popover_box));
     popover.set_parent(&theme_card);
 
@@ -356,6 +406,21 @@ fn add_theme_card(
         s.custom_themes.retain(|(_, p)| p != &path_str_delete);
         drop(s);
         themes_flow_delete.remove(&theme_card_clone);
+    });
+
+    let popover_use_logo = popover.clone();
+    let path_str_logo = abs_path.to_string();
+    let state_logo_clone = state.clone();
+    let update_theme_logo_clone = update_theme.clone();
+
+    use_logo_btn.connect_clicked(move |_| {
+        println!("DEBUG: Use as Logo clicked for custom theme card.");
+        popover_use_logo.popdown();
+        let mut s = state_logo_clone.borrow_mut();
+        s.logo_image_path = Some(path_str_logo.clone());
+        drop(s);
+        crate::db::set_config_value("logo_image_path", &path_str_logo);
+        update_theme_logo_clone();
     });
 
     themes_flow.insert(&theme_card, -1);
@@ -482,7 +547,9 @@ fn add_media_card(
 pub fn build_ui(app: &Application) {
     crate::db::init_media_table();
     crate::db::init_themes_table();
+    crate::db::init_config_table();
     let persisted_themes = crate::db::get_all_themes();
+    let logo_image_path = crate::db::get_config_value("logo_image_path");
 
     // 1. Initialize Stylesheet
     let provider = gtk::CssProvider::new();
@@ -518,6 +585,8 @@ pub fn build_ui(app: &Application) {
         blackout: false,
         clearout: false,
         logo_mode: false,
+        go_live_active: true,
+        logo_image_path,
         custom_themes: persisted_themes.clone(),
         custom_background_path: None,
         preview_header: "Genesis 1:1 (KJV)".to_string(),
@@ -754,6 +823,7 @@ pub fn build_ui(app: &Application) {
 
     // Center/Right actions
     let go_live_btn = create_toolbar_btn("media-playback-start-symbolic", "Go Live");
+    go_live_btn.add_css_class("toolbar-button-active");
     let logo_btn = create_toolbar_btn("image-x-generic-symbolic", "Logo");
     let black_btn = create_toolbar_btn("video-display-symbolic", "Black");
     let clear_btn = create_toolbar_btn("edit-clear-symbolic", "Clear");
@@ -856,6 +926,7 @@ pub fn build_ui(app: &Application) {
             false,
             false,
             false,
+            s.logo_image_path.as_deref(),
         );
     });
 
@@ -1016,6 +1087,7 @@ pub fn build_ui(app: &Application) {
             s.blackout,
             s.logo_mode,
             s.clearout,
+            s.logo_image_path.as_deref(),
         );
     });
 
@@ -1170,6 +1242,8 @@ pub fn build_ui(app: &Application) {
                 s.blackout,
                 s.logo_mode,
                 s.clearout,
+                s.go_live_active,
+                s.logo_image_path.clone(),
             );
         }
     });
@@ -2044,7 +2118,7 @@ pub fn build_ui(app: &Application) {
                 live_slides_list.remove(&child);
             }
 
-            let (live_slides, live_active_index, live_title, blackout_val, logo_val, clearout_val) = {
+            let (live_slides, live_active_index, live_title, blackout_val, logo_val, clearout_val, go_live_val, logo_image_path_val) = {
                 let s = state.borrow();
                 (
                     s.live_slides.clone(),
@@ -2053,6 +2127,8 @@ pub fn build_ui(app: &Application) {
                     s.blackout,
                     s.logo_mode,
                     s.clearout,
+                    s.go_live_active,
+                    s.logo_image_path.clone(),
                 )
             };
 
@@ -2152,6 +2228,8 @@ pub fn build_ui(app: &Application) {
                 blackout_val,
                 logo_val,
                 clearout_val,
+                go_live_val,
+                logo_image_path_val,
             );
         }
     };
@@ -2569,69 +2647,17 @@ pub fn build_ui(app: &Application) {
     // GO LIVE
     let state_clone = state.clone();
     let update_live_layout_clone4 = update_live_layout.clone();
-    go_live_btn.connect_clicked(move |_| {
+    go_live_btn.connect_clicked(move |btn| {
         println!("DEBUG: go_live_btn clicked!");
-        println!("DEBUG: connect_clicked triggered at line 1738");
         let mut s = state_clone.borrow_mut();
-        if s.current_selection_type == 0 {
-            // Go live with only the single selected verse
-            if let Some(sel_idx) = s.selected_verse_index {
-                if sel_idx < s.verses.len() {
-                    let v = &s.verses[sel_idx];
-                    let slide = (
-                        format!("{} ({})", v.reference, v.translation),
-                        v.text.clone(),
-                    );
-                    s.live_slides = vec![slide.clone()];
-                    s.live_title = format!("Live - {}", slide.0);
-                    s.live_active_index = Some(0);
-                }
-            } else {
-                // No explicit selection: use the first verse in the chapter
-                let first = s
-                    .verses
-                    .iter()
-                    .filter(|v| v.translation == s.selected_translation)
-                    .next()
-                    .map(|v| {
-                        (
-                            format!("{} ({})", v.reference, v.translation),
-                            v.text.clone(),
-                        )
-                    });
-                if let Some(slide) = first {
-                    s.live_slides = vec![slide.clone()];
-                    s.live_title = format!("Live - {}", slide.0);
-                    s.live_active_index = Some(0);
-                }
-            }
-        } else {
-            // Live-ify current song stanzas
-            if let Some(song_idx) = s.selected_song_index {
-                let song = s.songs[song_idx].clone();
-                let stanza_idx = s.selected_stanza_index.unwrap_or(0);
-
-                s.live_slides = song
-                    .stanzas
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, text)| {
-                        (
-                            format!("{} - Stanza {}", song.title, idx + 1),
-                            text.to_string(),
-                        )
-                    })
-                    .collect();
-                s.live_title = format!("Live - {}", song.title);
-                s.live_active_index = Some(stanza_idx);
-            }
-        }
-        // Reset screen flags
-        s.blackout = false;
-        s.clearout = false;
-        s.logo_mode = false;
-
+        s.go_live_active = !s.go_live_active;
+        let is_on = s.go_live_active;
         drop(s);
+        if is_on {
+            btn.add_css_class("toolbar-button-active");
+        } else {
+            btn.remove_css_class("toolbar-button-active");
+        }
         update_live_layout_clone4();
     });
 
