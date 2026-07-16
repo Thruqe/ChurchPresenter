@@ -8,3 +8,5 @@ glib = "0.22.8"
 gtk = { version = "0.9", package = "gtk4" }
 rusqlite = { version = "0.31", features = ["bundled"] }
 ndi = "0.1.2"
+log = "0.4"
+simplelog = "0.12"

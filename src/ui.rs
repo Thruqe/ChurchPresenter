@@ -1,3 +1,4 @@
+use crate::println;
 use gtk::prelude::*;
 use gtk::{
     Application, ApplicationWindow, Box, Button, Entry, FlowBox, Image, Label, ListBox, ListBoxRow,
@@ -365,6 +366,8 @@ fn add_theme_card(
         s.selected_theme = "custom";
         s.custom_background_path = Some(path_str_clone.clone());
         drop(s);
+        crate::db::set_config_value("selected_theme", "custom");
+        crate::db::set_config_value("custom_background_path", &path_str_clone);
         update_theme_clone();
     });
     theme_card.add_controller(click_gesture);
@@ -551,6 +554,19 @@ pub fn build_ui(app: &Application) {
     let persisted_themes = crate::db::get_all_themes();
     let logo_image_path = crate::db::get_config_value("logo_image_path");
 
+    // Load persisted theme
+    let db_selected_theme = crate::db::get_config_value("selected_theme").unwrap_or_else(|| "classic-red".to_string());
+    let selected_theme: &'static str = match db_selected_theme.as_str() {
+        "classic-red" => "classic-red",
+        "royal-blue" => "royal-blue",
+        "forest-green" => "forest-green",
+        "dark-slate" => "dark-slate",
+        "black" => "black",
+        "custom" => "custom",
+        _ => "classic-red",
+    };
+    let custom_background_path = crate::db::get_config_value("custom_background_path");
+
     // 1. Initialize Stylesheet
     let provider = gtk::CssProvider::new();
     provider.load_from_data(include_str!("style.css"));
@@ -581,14 +597,14 @@ pub fn build_ui(app: &Application) {
         search_parsed_verse: Some(1),
         search_by_keyword: false,
 
-        selected_theme: "classic-red",
+        selected_theme,
         blackout: false,
         clearout: false,
         logo_mode: false,
         go_live_active: true,
         logo_image_path,
         custom_themes: persisted_themes.clone(),
-        custom_background_path: None,
+        custom_background_path,
         preview_header: "Genesis 1:1 (KJV)".to_string(),
         preview_body: "In the beginning God created the heaven and the earth.".to_string(),
         live_current_header: "EasyWorship".to_string(),
@@ -2109,6 +2125,9 @@ pub fn build_ui(app: &Application) {
         let live_text_body_label = live_text_body_label_clone.clone();
         let state = state_clone.clone();
         let ndi_out = ndi_out.clone();
+        let logo_btn = logo_btn.clone();
+        let black_btn = black_btn.clone();
+        let clear_btn = clear_btn.clone();
 
         move || {
             println!("DEBUG: Closure executing...");
@@ -2219,6 +2238,25 @@ pub fn build_ui(app: &Application) {
             } else {
                 drop(s);
                 live_drawing_area.queue_draw();
+            }
+
+            // Update toolbar button active states based on actual AppState values
+            if blackout_val {
+                black_btn.add_css_class("toolbar-button-active");
+            } else {
+                black_btn.remove_css_class("toolbar-button-active");
+            }
+
+            if logo_val {
+                logo_btn.add_css_class("toolbar-button-active");
+            } else {
+                logo_btn.remove_css_class("toolbar-button-active");
+            }
+
+            if clearout_val {
+                clear_btn.add_css_class("toolbar-button-active");
+            } else {
+                clear_btn.remove_css_class("toolbar-button-active");
             }
 
             ndi_out.update_slide(
@@ -2721,6 +2759,7 @@ pub fn build_ui(app: &Application) {
             let mut s = state.borrow_mut();
             s.selected_theme = theme_name;
             drop(s);
+            crate::db::set_config_value("selected_theme", theme_name);
             update_theme();
         });
         card.add_controller(gesture);

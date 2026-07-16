@@ -1,3 +1,4 @@
+use crate::{println, eprintln};
 use gtk::cairo::{Context, FontSlant, FontWeight, Format, ImageSurface};
 use gtk::gdk_pixbuf::Pixbuf;
 use gtk::prelude::*;
