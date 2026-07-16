@@ -185,8 +185,16 @@ pub fn get_all_books() -> Vec<String> {
     vec![]
 }
 
+pub fn get_data_db_path() -> String {
+    let path = "/home/thruqe/Documents/Church-Presenter/saves/data.sqlite";
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    path.to_string()
+}
+
 pub fn init_media_table() {
-    if let Ok(conn) = Connection::open("KJV.sqlite") {
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
         let _ = conn.execute(
             "CREATE TABLE IF NOT EXISTS media (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -200,7 +208,7 @@ pub fn init_media_table() {
 
 pub fn get_all_media() -> Vec<(String, String)> {
     let mut media = Vec::new();
-    if let Ok(conn) = Connection::open("KJV.sqlite") {
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
         if let Ok(mut stmt) = conn.prepare("SELECT name, path FROM media ORDER BY id") {
             if let Ok(rows) = stmt.query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -217,7 +225,7 @@ pub fn get_all_media() -> Vec<(String, String)> {
 }
 
 pub fn add_media(name: &str, path: &str) {
-    if let Ok(conn) = Connection::open("KJV.sqlite") {
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
         let _ = conn.execute(
             "INSERT OR IGNORE INTO media (name, path) VALUES (?, ?)",
             params![name, path],
@@ -226,7 +234,53 @@ pub fn add_media(name: &str, path: &str) {
 }
 
 pub fn delete_media(path: &str) {
-    if let Ok(conn) = Connection::open("KJV.sqlite") {
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
         let _ = conn.execute("DELETE FROM media WHERE path = ?", params![path]);
+    }
+}
+
+pub fn init_themes_table() {
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
+        let _ = conn.execute(
+            "CREATE TABLE IF NOT EXISTS themes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                path TEXT NOT NULL UNIQUE
+            )",
+            [],
+        );
+    }
+}
+
+pub fn get_all_themes() -> Vec<(String, String)> {
+    let mut themes = Vec::new();
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
+        if let Ok(mut stmt) = conn.prepare("SELECT name, path FROM themes ORDER BY id") {
+            if let Ok(rows) = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            }) {
+                for r in rows {
+                    if let Ok(item) = r {
+                        themes.push(item);
+                    }
+                }
+            }
+        }
+    }
+    themes
+}
+
+pub fn add_theme(name: &str, path: &str) {
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO themes (name, path) VALUES (?, ?)",
+            params![name, path],
+        );
+    }
+}
+
+pub fn delete_theme(path: &str) {
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
+        let _ = conn.execute("DELETE FROM themes WHERE path = ?", params![path]);
     }
 }

@@ -237,13 +237,137 @@ fn start_live_transition(drawing_area: &gtk::DrawingArea, state: &Rc<RefCell<App
     });
 }
 
+fn get_media_dimensions(path: &str) -> Option<(i32, i32)> {
+    let output = std::process::Command::new("ffprobe")
+        .args(&[
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "csv=s=x:p=0",
+            path
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let trimmed = stdout.trim();
+    let parts: Vec<&str> = trimmed.split('x').collect();
+    if parts.len() >= 2 {
+        let width = parts[0].parse::<i32>().ok()?;
+        let height = parts[1].parse::<i32>().ok()?;
+        return Some((width, height));
+    }
+    None
+}
+
+fn add_theme_card(
+    themes_flow: &gtk::FlowBox,
+    filename: &str,
+    abs_path: &str,
+    state: &std::rc::Rc<std::cell::RefCell<crate::models::AppState>>,
+    update_theme: &std::rc::Rc<dyn Fn()>,
+) {
+    use gtk::prelude::*;
+    use gtk::{Box, Button, Label, Orientation, Popover};
+
+    let theme_card = Box::builder()
+        .orientation(Orientation::Vertical)
+        .width_request(120)
+        .spacing(6)
+        .build();
+    theme_card.add_css_class("media-card");
+
+    let is_video = abs_path.to_lowercase().ends_with(".mp4")
+        || abs_path.to_lowercase().ends_with(".mkv")
+        || abs_path.to_lowercase().ends_with(".avi");
+
+    let theme_thumb = Box::builder().height_request(80).build();
+    theme_thumb.add_css_class("media-thumbnail-placeholder");
+
+    if is_video {
+        let icon = gtk::Image::from_icon_name("video-x-generic");
+        icon.set_pixel_size(48);
+        theme_thumb.append(&icon);
+        theme_thumb.add_css_class("theme-dark-slate");
+    } else {
+        let provider = gtk::CssProvider::new();
+        let formatted_path = abs_path.replace("\\", "/").replace(" ", "%20");
+        let css_data = format!(
+            "* {{ background-image: url('file:///{}'); background-size: cover; background-repeat: no-repeat; background-position: center; }}",
+            formatted_path
+        );
+        provider.load_from_data(&css_data);
+        theme_thumb
+            .style_context()
+            .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+    }
+
+    let theme_lbl = Label::builder().label(filename).build();
+    theme_lbl.add_css_class("media-card-title");
+
+    theme_card.append(&theme_thumb);
+    theme_card.append(&theme_lbl);
+
+    let click_gesture = gtk::GestureClick::new();
+    let state_clone = state.clone();
+    let path_str_clone = abs_path.to_string();
+    let update_theme_clone = update_theme.clone();
+
+    click_gesture.connect_pressed(move |_, _, _, _| {
+        println!("DEBUG: Custom theme card selected: {}", path_str_clone);
+        let mut s = state_clone.borrow_mut();
+        s.selected_theme = "custom";
+        s.custom_background_path = Some(path_str_clone.clone());
+        drop(s);
+        update_theme_clone();
+    });
+    theme_card.add_controller(click_gesture);
+
+    let popover = Popover::builder().build();
+    let popover_box = Box::builder().orientation(Orientation::Vertical).build();
+    let delete_btn = Button::builder().label("Delete").has_frame(false).build();
+    delete_btn.add_css_class("menu-item-button");
+    popover_box.append(&delete_btn);
+    popover.set_child(Some(&popover_box));
+    popover.set_parent(&theme_card);
+
+    let popover_clone = popover.clone();
+    let right_click_gesture = gtk::GestureClick::builder().button(3).build();
+    right_click_gesture.connect_pressed(move |_, _, x, y| {
+        println!("DEBUG: Right-click triggered on custom theme card.");
+        popover_clone.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+        popover_clone.popup();
+    });
+    theme_card.add_controller(right_click_gesture);
+
+    let theme_card_clone = theme_card.clone();
+    let themes_flow_delete = themes_flow.clone();
+    let popover_delete = popover.clone();
+    let path_str_delete = abs_path.to_string();
+    let state_delete_clone = state.clone();
+
+    delete_btn.connect_clicked(move |_| {
+        println!("DEBUG: Delete clicked for custom theme card.");
+        popover_delete.popdown();
+        crate::db::delete_theme(&path_str_delete);
+        let mut s = state_delete_clone.borrow_mut();
+        s.custom_themes.retain(|(_, p)| p != &path_str_delete);
+        drop(s);
+        themes_flow_delete.remove(&theme_card_clone);
+    });
+
+    themes_flow.insert(&theme_card, -1);
+}
+
 fn add_media_card(
     media_flow: &gtk::FlowBox,
     themes_flow: &gtk::FlowBox,
     filename: &str,
     abs_path: &str,
-    state: &Rc<RefCell<AppState>>,
-    update_theme: &Rc<dyn Fn()>,
+    state: &std::rc::Rc<std::cell::RefCell<crate::models::AppState>>,
+    update_theme: &std::rc::Rc<dyn Fn()>,
 ) {
     use gtk::prelude::*;
     use gtk::{Box, Button, Label, Orientation, Popover};
@@ -339,57 +463,17 @@ fn add_media_card(
         println!("DEBUG: Copy to Themes clicked for media card.");
         popover.popdown();
         let mut s = state_clone.borrow_mut();
-        s.custom_themes.push((filename_clone.clone(), path_str_clone.clone()));
-        drop(s);
-
-        let theme_card = Box::builder()
-            .orientation(Orientation::Vertical)
-            .width_request(120)
-            .spacing(6)
-            .build();
-        theme_card.add_css_class("media-card");
-
-        let theme_thumb = Box::builder().height_request(80).build();
-        theme_thumb.add_css_class("media-thumbnail-placeholder");
-
-        if is_video {
-            let icon = gtk::Image::from_icon_name("video-x-generic");
-            icon.set_pixel_size(48);
-            theme_thumb.append(&icon);
-            theme_thumb.add_css_class("theme-dark-slate");
-        } else {
-            let provider = gtk::CssProvider::new();
-            let formatted_path = path_str_clone.replace("\\", "/").replace(" ", "%20");
-            let css_data = format!(
-                "* {{ background-image: url('file:///{}'); background-size: cover; background-repeat: no-repeat; background-position: center; }}",
-                formatted_path
+        if !s.custom_themes.iter().any(|(_, p)| p == &path_str_clone) {
+            s.custom_themes.push((filename_clone.clone(), path_str_clone.clone()));
+            crate::db::add_theme(&filename_clone, &path_str_clone);
+            add_theme_card(
+                &themes_flow_clone,
+                &filename_clone,
+                &path_str_clone,
+                &state_clone,
+                &update_theme_clone,
             );
-            provider.load_from_data(&css_data);
-            theme_thumb.style_context().add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
         }
-
-        let theme_lbl = Label::builder().label(&filename_clone).build();
-        theme_lbl.add_css_class("media-card-title");
-
-        theme_card.append(&theme_thumb);
-        theme_card.append(&theme_lbl);
-
-        let click_gesture = gtk::GestureClick::new();
-        let state_clone2 = state_clone.clone();
-        let path_str_clone2 = path_str_clone.clone();
-        let update_theme_clone2 = update_theme_clone.clone();
-
-        click_gesture.connect_pressed(move |_, _, _, _| {
-            println!("DEBUG: Custom theme card selected: {}", path_str_clone2);
-            let mut s = state_clone2.borrow_mut();
-            s.selected_theme = "custom";
-            s.custom_background_path = Some(path_str_clone2.clone());
-            drop(s);
-            update_theme_clone2();
-        });
-        theme_card.add_controller(click_gesture);
-
-        themes_flow_clone.insert(&theme_card, -1);
     });
 
     media_flow.insert(&card, -1);
@@ -397,6 +481,8 @@ fn add_media_card(
 
 pub fn build_ui(app: &Application) {
     crate::db::init_media_table();
+    crate::db::init_themes_table();
+    let persisted_themes = crate::db::get_all_themes();
 
     // 1. Initialize Stylesheet
     let provider = gtk::CssProvider::new();
@@ -432,7 +518,7 @@ pub fn build_ui(app: &Application) {
         blackout: false,
         clearout: false,
         logo_mode: false,
-        custom_themes: vec![],
+        custom_themes: persisted_themes.clone(),
         custom_background_path: None,
         preview_header: "Genesis 1:1 (KJV)".to_string(),
         preview_body: "In the beginning God created the heaven and the earth.".to_string(),
@@ -1515,12 +1601,68 @@ pub fn build_ui(app: &Application) {
 
                             println!("DEBUG: Chosen file path: {}", path_str);
 
-                            // Copy file to workspace centralized folder
-                            std::fs::create_dir_all("imported_media").ok();
-                            let dest_path = format!("imported_media/{}", filename);
-                            println!("DEBUG: Copying from {} to {}", path_str, dest_path);
-                            if let Err(e) = std::fs::copy(&path_str, &dest_path) {
-                                println!("DEBUG: Copy error encountered: {:?}", e);
+                            // Copy/Resize/Compress file to workspace saves/imported_media folder
+                            let saves_dir = "/home/thruqe/Documents/Church-Presenter/saves";
+                            let media_dir = format!("{}/imported_media", saves_dir);
+                            std::fs::create_dir_all(&media_dir).ok();
+                            let dest_path = format!("{}/{}", media_dir, filename);
+
+                            // Check if the destination path already exists
+                            let dest_path_buf = std::path::Path::new(&dest_path);
+                            let already_exists = dest_path_buf.exists();
+
+                            if !already_exists {
+                                // Check dimensions using ffprobe
+                                let needs_resize = if let Some((w, h)) = get_media_dimensions(&path_str) {
+                                    w > 1920 || h > 1080
+                                } else {
+                                    false
+                                };
+
+                                if needs_resize {
+                                    let is_video = path_str.to_lowercase().ends_with(".mp4")
+                                        || path_str.to_lowercase().ends_with(".mkv")
+                                        || path_str.to_lowercase().ends_with(".avi");
+
+                                    let mut cmd = std::process::Command::new("ffmpeg");
+                                    cmd.arg("-y").arg("-i").arg(&path_str);
+                                    cmd.arg("-vf").arg("scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease");
+                                    if is_video {
+                                        cmd.arg("-c:v").arg("libx264").arg("-crf").arg("20");
+                                    } else {
+                                        let is_png = path_str.to_lowercase().ends_with(".png");
+                                        if is_png {
+                                            cmd.arg("-compression_level").arg("9");
+                                        } else {
+                                            cmd.arg("-q:v").arg("8");
+                                        }
+                                    }
+                                    cmd.arg(&dest_path);
+
+                                    println!("DEBUG: Running ffmpeg to resize/compress: {:?}", cmd);
+                                    match cmd.output() {
+                                        Ok(output) => {
+                                            if !output.status.success() {
+                                                let err_msg = String::from_utf8_lossy(&output.stderr);
+                                                println!("DEBUG: Ffmpeg command failed: {}. Falling back to copying.", err_msg);
+                                                let _ = std::fs::copy(&path_str, &dest_path);
+                                            } else {
+                                                println!("DEBUG: Ffmpeg successfully resized and saved media to {}", dest_path);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            println!("DEBUG: Failed to execute ffmpeg: {:?}. Falling back to copying.", e);
+                                            let _ = std::fs::copy(&path_str, &dest_path);
+                                        }
+                                    }
+                                } else {
+                                    println!("DEBUG: Media is <= 1920x1080, copying directly.");
+                                    if let Err(e) = std::fs::copy(&path_str, &dest_path) {
+                                        println!("DEBUG: Copy error: {:?}", e);
+                                    }
+                                }
+                            } else {
+                                println!("DEBUG: Media already exists in saves/imported_media, skipping copy/compression.");
                             }
 
                             // Build clean absolute path of copied file
@@ -1533,7 +1675,7 @@ pub fn build_ui(app: &Application) {
                                     clean
                                 }
                             } else {
-                                path_str.clone()
+                                dest_path.clone()
                             };
                             println!("DEBUG: Resolved absolute destination path: {}", abs_path);
 
@@ -1612,6 +1754,16 @@ pub fn build_ui(app: &Application) {
     themes_flow.insert(&theme_card_green, -1);
     themes_flow.insert(&theme_card_slate, -1);
     themes_flow.insert(&theme_card_black, -1);
+
+    for (name, path) in &persisted_themes {
+        add_theme_card(
+            &themes_flow,
+            name,
+            path,
+            &state,
+            &update_slide_theme_classes,
+        );
+    }
 
     resource_stack.add_named(&themes_scrolled, Some("themes"));
 
