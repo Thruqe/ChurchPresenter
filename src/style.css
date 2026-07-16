@@ -637,3 +637,22 @@ popover button:focus-visible {
 .theme-black label {
     color: #ffffff;
 }
+
+.preview-text-green {
+    background-color: #ecfdf5;
+    padding: 20px 24px;
+    border-radius: 8px;
+    border: 1px solid #a7f3d0;
+    border-left: 6px solid #10b981;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    margin: 16px;
+}
+
+.preview-text-green .text-output-reference {
+    color: #047857;
+}
+
+.preview-text-green .text-output-body {
+    color: #065f46;
+}
+

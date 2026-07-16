@@ -877,7 +877,7 @@ pub fn build_ui(app: &Application) {
         .hexpand(true)
         .vexpand(true)
         .build();
-    preview_text_container.add_css_class("text-output-container");
+    preview_text_container.add_css_class("preview-text-green");
 
     let preview_text_ref_label = Label::builder()
         .label("Genesis 1:1 (KJV)")
@@ -962,6 +962,7 @@ pub fn build_ui(app: &Application) {
         .vscrollbar_policy(PolicyType::Automatic)
         .child(&live_slides_list)
         .height_request(180)
+        .vexpand(true)
         .build();
     live_scrolled_window.set_visible(false); // hidden by default (Visual is the default mode)
     live_inner_container.append(&live_scrolled_window);
@@ -1104,6 +1105,7 @@ pub fn build_ui(app: &Application) {
             btn_vis.add_css_class("view-toggle-btn-active");
             btn_txt.remove_css_class("view-toggle-btn-active");
             queue_list.set_visible(false);
+            stack.set_visible(true);
         });
 
         let stack = live_monitor_stack.clone();
@@ -1117,6 +1119,7 @@ pub fn build_ui(app: &Application) {
             btn_txt.add_css_class("view-toggle-btn-active");
             btn_vis.remove_css_class("view-toggle-btn-active");
             queue_list.set_visible(true);
+            stack.set_visible(false);
         });
     }
 
