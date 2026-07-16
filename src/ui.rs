@@ -2196,7 +2196,8 @@ pub fn build_ui(app: &Application) {
             let state = state.clone();
             let populate = populate_verses_table.clone();
             let entry = script_search.clone();
-            move || {
+            let update_live = update_live_layout.clone();
+            move |push_to_live: bool| {
                 println!("DEBUG: Closure executing...");
                 println!("DEBUG: move || closure triggered at line 1422");
                 let query = entry.text().to_string();
@@ -2208,13 +2209,53 @@ pub fn build_ui(app: &Application) {
                 s.verses = new_verses;
                 s.selected_verse_index = None;
                 s.search_parsed_verse = verse;
+
+                // Push matching verse to live if requested
+                if push_to_live && !s.verses.is_empty() {
+                    let target_v_idx = if let Some(target_v) = verse {
+                        s.verses.iter()
+                            .position(|v| {
+                                if v.translation == s.selected_translation {
+                                    if let Some(colon_idx) = v.reference.rfind(':') {
+                                        if let Ok(v_num) = v.reference[colon_idx + 1..].parse::<i32>() {
+                                            return v_num == target_v;
+                                        }
+                                    }
+                                }
+                                false
+                            })
+                            .unwrap_or(0)
+                    } else {
+                        0
+                    };
+
+                    if target_v_idx < s.verses.len() {
+                        let v = &s.verses[target_v_idx];
+                        let slide = (
+                            format!("{} ({})", v.reference, v.translation),
+                            v.text.clone(),
+                        );
+                        s.live_slides = vec![slide.clone()];
+                        s.live_title = format!("Live - {}", slide.0);
+                        s.live_active_index = Some(0);
+
+                        // Reset screen flags
+                        s.blackout = false;
+                        s.clearout = false;
+                        s.logo_mode = false;
+                    }
+                }
+
                 drop(s);
                 populate();
+
+                if push_to_live {
+                    update_live();
+                }
             }
         };
         let run_search = Rc::new(run_search);
 
-        // Handles Right-arrow (accept autocomplete) and Enter (run search)
         // Handles Right-arrow (accept autocomplete suggestion)
         let key_ctrl = gtk::EventControllerKey::new();
         key_ctrl.connect_key_pressed({
@@ -2238,7 +2279,7 @@ pub fn build_ui(app: &Application) {
                             // if the entry doesn't already have a chapter/verse.
                             let text = entry.text().to_string();
                             if !text.contains(':') {
-                                run_search();
+                                run_search(false);
                             }
                             return gtk::glib::Propagation::Stop;
                         }
@@ -2262,7 +2303,7 @@ pub fn build_ui(app: &Application) {
                 }
                 let text = entry.text().to_string();
                 if !text.is_empty() && !text.contains(':') {
-                    run_search();
+                    run_search(false);
                 }
             }
         });
@@ -2273,7 +2314,7 @@ pub fn build_ui(app: &Application) {
         script_search.connect_activate({
             let run_search = run_search.clone();
             move |_entry| {
-                run_search();
+                run_search(true);
             }
         });
 
@@ -2323,7 +2364,7 @@ pub fn build_ui(app: &Application) {
         script_search.add_controller(autocomplete_ctrl);
 
         // Initial query on startup
-        run_search();
+        run_search(false);
     }
 
     // Callback when selecting a translation in the sidebar
