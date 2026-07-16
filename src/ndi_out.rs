@@ -17,6 +17,12 @@ pub struct NdiSlideData {
     pub clearout: bool,
     pub go_live: bool,
     pub logo_image_path: Option<String>,
+    pub bg_type: String,
+    pub bg_path: Option<String>,
+    pub font_size: f64,
+    pub scale: f64,
+    pub align: String,
+    pub shadow: bool,
 }
 
 #[derive(Clone)]
@@ -31,9 +37,14 @@ fn draw_background(
     theme: &str,
     blackout: bool,
     cached_background_pixbuf: &Option<Pixbuf>,
+    bg_type: &str,
 ) {
     if blackout {
         cr.set_source_rgb(0.0, 0.0, 0.0);
+        let _ = cr.paint();
+    } else if bg_type == "transparent" || bg_type == "lower_transparent" {
+        // Fully transparent overlay
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
         let _ = cr.paint();
     } else {
         if let Some(scaled) = cached_background_pixbuf {
@@ -50,6 +61,86 @@ fn draw_background(
             }
             let _ = cr.paint();
         }
+    }
+}
+
+fn draw_song_text_cairo(
+    cr: &Context,
+    width: f64,
+    height: f64,
+    lyrics: &str,
+    font_size: f64,
+    scale: f64,
+    align: &str,
+    shadow: bool,
+    bg_type: &str,
+    alpha: f64,
+) {
+    let actual_font_size = font_size * scale;
+    cr.set_font_size(actual_font_size);
+
+    let (text_min_y, text_max_y, margin_x) = if bg_type == "lower_transparent" {
+        (height - height * 0.35 + 10.0, height - 10.0, width * 0.05)
+    } else {
+        (height * 0.1, height * 0.9, width * 0.075)
+    };
+
+    let max_text_width = width - margin_x * 2.0;
+
+    let mut wrapped_lines = Vec::new();
+    for line in lyrics.lines() {
+        let mut current_line = String::new();
+        for word in line.split_whitespace() {
+            let test_line = if current_line.is_empty() {
+                word.to_string()
+            } else {
+                format!("{} {}", current_line, word)
+            };
+            if let Ok(ext) = cr.text_extents(&test_line) {
+                if ext.width() > max_text_width {
+                    if !current_line.is_empty() {
+                        wrapped_lines.push(current_line);
+                    }
+                    current_line = word.to_string();
+                } else {
+                    current_line = test_line;
+                }
+            }
+        }
+        if !current_line.is_empty() {
+            wrapped_lines.push(current_line);
+        }
+    }
+
+    let line_spacing = actual_font_size * 1.35;
+    let total_height = if wrapped_lines.is_empty() {
+        0.0
+    } else {
+        (wrapped_lines.len() - 1) as f64 * line_spacing + actual_font_size
+    };
+
+    let start_y = text_min_y + ((text_max_y - text_min_y) - total_height) / 2.0;
+    let mut current_y = start_y + actual_font_size * 0.8;
+
+    for line in &wrapped_lines {
+        if let Ok(ext) = cr.text_extents(line) {
+            let x = match align {
+                "left" => margin_x,
+                "right" => width - ext.width() - margin_x,
+                _ => (width - ext.width()) / 2.0,
+            };
+
+            if shadow {
+                cr.set_source_rgba(0.0, 0.0, 0.0, 0.7 * alpha);
+                cr.move_to(x + 2.0, current_y + 2.0);
+                let _ = cr.show_text(line);
+            }
+
+            cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
+            cr.move_to(x, current_y);
+            let _ = cr.show_text(line);
+        }
+        current_y += line_spacing;
     }
 }
 
@@ -81,82 +172,109 @@ fn draw_single_slide_text(cr: &Context, width: f64, height: f64, slide: &NdiSlid
             }
         }
     } else if !slide.blackout && !slide.clearout {
-        let body_font_size = height * 0.06;
-        let header_font_size = height * 0.050;
+        if !slide.bg_type.is_empty() {
+            // Draw lower transparent rect
+            if slide.bg_type == "lower_transparent" {
+                cr.set_source_rgba(0.0, 0.0, 0.0, 0.6 * alpha);
+                let rect_height = height * 0.35;
+                let rect_y = height - rect_height;
+                cr.rectangle(0.0, rect_y, width, rect_height);
+                let _ = cr.fill();
+            }
 
-        // Wrap body text
-        let max_width = width - width * 0.15;
-        let mut wrapped_lines = Vec::new();
+            draw_song_text_cairo(
+                cr,
+                width,
+                height,
+                &slide.body,
+                slide.font_size,
+                slide.scale,
+                &slide.align,
+                slide.shadow,
+                &slide.bg_type,
+                alpha,
+            );
+        } else {
+            let body_font_size = height * 0.06;
+            let header_font_size = height * 0.050;
 
-        cr.set_font_size(body_font_size);
-        cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
+            // Wrap body text
+            let max_width = width - width * 0.15;
+            let mut wrapped_lines = Vec::new();
 
-        for line in slide.body.lines() {
-            let mut current_line = String::new();
-            for word in line.split_whitespace() {
-                let test_line = if current_line.is_empty() {
-                    word.to_string()
-                } else {
-                    format!("{} {}", current_line, word)
-                };
-                if let Ok(ext) = cr.text_extents(&test_line) {
-                    if ext.width() > max_width {
-                        if !current_line.is_empty() {
-                            wrapped_lines.push(current_line);
-                        }
-                        current_line = word.to_string();
+            cr.set_font_size(body_font_size);
+            cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
+
+            for line in slide.body.lines() {
+                let mut current_line = String::new();
+                for word in line.split_whitespace() {
+                    let test_line = if current_line.is_empty() {
+                        word.to_string()
                     } else {
-                        current_line = test_line;
+                        format!("{} {}", current_line, word)
+                    };
+                    if let Ok(ext) = cr.text_extents(&test_line) {
+                        if ext.width() > max_width {
+                            if !current_line.is_empty() {
+                                wrapped_lines.push(current_line);
+                            }
+                            current_line = word.to_string();
+                        } else {
+                            current_line = test_line;
+                        }
                     }
                 }
+                if !current_line.is_empty() {
+                    wrapped_lines.push(current_line);
+                }
             }
-            if !current_line.is_empty() {
-                wrapped_lines.push(current_line);
+
+            // Calculate vertical metrics
+            let line_spacing = height * 0.06;
+            let total_body_height = if wrapped_lines.is_empty() {
+                0.0
+            } else {
+                (wrapped_lines.len() - 1) as f64 * line_spacing + body_font_size
+            };
+
+            let body_start_y = (height - total_body_height) / 2.0;
+
+            // 1. Draw Header
+            if !slide.header.is_empty() {
+                cr.set_font_size(header_font_size);
+                cr.set_source_rgba(0.9, 0.9, 0.9, alpha);
+                if let Ok(ext) = cr.text_extents(&slide.header) {
+                    cr.move_to(
+                        (width - ext.width()) / 2.0,
+                        body_start_y - height * 0.046,
+                    );
+                    let _ = cr.show_text(&slide.header);
+                }
+            }
+
+            // 2. Draw Wrapped Body Lines
+            cr.set_font_size(body_font_size);
+            cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
+
+            let mut current_y = body_start_y + body_font_size * 0.8;
+            for line in &wrapped_lines {
+                if let Ok(ext) = cr.text_extents(line) {
+                    cr.move_to((width - ext.width()) / 2.0, current_y);
+                    let _ = cr.show_text(line);
+                }
+                current_y += line_spacing;
             }
         }
-
-        // Calculate vertical metrics
-        let line_spacing = height * 0.06;
-        let total_body_height = if wrapped_lines.is_empty() {
-            0.0
-        } else {
-            (wrapped_lines.len() - 1) as f64 * line_spacing + body_font_size
-        };
-
-        // Center the body block vertically
-        let start_y = (height - total_body_height) / 2.0;
-
-        // Draw body lines centered
-        let mut current_y = start_y + body_font_size * 0.8;
-        for line in &wrapped_lines {
-            if let Ok(ext) = cr.text_extents(line) {
-                cr.move_to((width - ext.width()) / 2.0, current_y);
-                let _ = cr.show_text(line);
-            }
-            current_y += line_spacing;
-        }
-
-        // Draw header aligned right
-        cr.set_font_size(header_font_size);
-        cr.set_source_rgba(0.85, 0.85, 0.85, alpha);
-        if let Ok(ext) = cr.text_extents(&slide.header) {
-            let header_x = width - ext.width() - width * 0.075;
-            let header_y = current_y + height * 0.02;
-            cr.move_to(header_x, header_y);
-            let _ = cr.show_text(&slide.header);
-        }
-    } else if slide.clearout && !slide.blackout {
-        // Clearout: show only background, no text drawn
     }
 }
 
 impl NdiOutput {
     pub fn new() -> Self {
         let current_slide = Arc::new(Mutex::new(None::<NdiSlideData>));
-        let current_slide_clone = Arc::clone(&current_slide);
+        let thread_slide = current_slide.clone();
 
         thread::spawn(move || {
-            // Initialize NDI
+            // NDI initialization
             if let Err(e) = ndi::initialize() {
                 eprintln!("Failed to initialize NDI: {:?}", e);
                 return;
@@ -189,17 +307,22 @@ impl NdiOutput {
             let mut last_sent_time = std::time::Instant::now();
 
             loop {
-                // Sleep for 10ms to check for state updates quickly without burning CPU
+                // Sleep for 33ms to target ~30fps
                 thread::sleep(Duration::from_millis(33));
 
                 // Get current slide data
                 let slide_opt = {
-                    let lock = current_slide_clone.lock().unwrap();
+                    let lock = thread_slide.lock().unwrap();
                     lock.clone()
                 };
 
                 if let Some(slide) = slide_opt {
+                    if !slide.go_live {
+                        continue;
+                    }
+
                     let slide_changed = match &last_slide {
+                        None => true,
                         Some(last) => {
                             last.header != slide.header
                                 || last.body != slide.body
@@ -207,29 +330,31 @@ impl NdiOutput {
                                 || last.blackout != slide.blackout
                                 || last.logo_mode != slide.logo_mode
                                 || last.clearout != slide.clearout
+                                || last.logo_image_path != slide.logo_image_path
+                                || last.bg_type != slide.bg_type
+                                || last.bg_path != slide.bg_path
+                                || last.font_size != slide.font_size
+                                || last.scale != slide.scale
+                                || last.align != slide.align
+                                || last.shadow != slide.shadow
                         }
-                        None => true,
                     };
 
                     if slide_changed {
-                        println!(
-                            "DEBUG: NDI loop - slide changed detected! Header: '{}', Theme: '{}'",
-                            slide.header, slide.theme
-                        );
-                        if let Some(ref prev) = last_slide {
-                            trans_prev_slide = Some(prev.clone());
-                            trans_start = Some(std::time::Instant::now());
-                        }
+                        trans_prev_slide = last_slide.clone();
+                        trans_start = Some(std::time::Instant::now());
                         last_slide = Some(slide.clone());
                     }
 
+                    // Check transition status
                     let mut is_animating = false;
-                    let mut progress = 1.0;
+                    let mut progress = 1.0f64;
                     if let Some(start) = trans_start {
                         let elapsed = start.elapsed().as_millis() as f64;
-                        if elapsed < 800.0 {
+                        let duration = 300.0f64; // 300ms transition
+                        if elapsed < duration {
                             is_animating = true;
-                            progress = elapsed / 800.0;
+                            progress = elapsed / duration;
                         } else {
                             trans_start = None;
                             trans_prev_slide = None;
@@ -243,6 +368,12 @@ impl NdiOutput {
                         // Ensure active background is loaded/scaled if needed
                         let active_bg_path = if slide.logo_mode {
                             slide.logo_image_path.as_deref().unwrap_or("")
+                        } else if !slide.bg_type.is_empty() {
+                            if slide.bg_type == "image" {
+                                slide.bg_path.as_deref().unwrap_or("")
+                            } else {
+                                ""
+                            }
                         } else {
                             &slide.theme
                         };
@@ -286,6 +417,7 @@ impl NdiOutput {
                             if slide.logo_mode { "" } else { &slide.theme },
                             slide.blackout,
                             &cached_background_pixbuf,
+                            &slide.bg_type,
                         );
 
                         // 2. Draw text
@@ -328,25 +460,18 @@ impl NdiOutput {
                         match surface.data() {
                             Ok(data) => {
                                 pixel_buffer.copy_from_slice(&*data);
+                                last_sent_time = std::time::Instant::now();
                             }
                             Err(e) => {
-                                println!(
-                                    "DEBUG: NDI - failed to access cairo surface data: {:?}",
-                                    e
-                                );
+                                eprintln!("Error borrowing surface data: {:?}", e);
                             }
                         }
 
-                        last_sent_time = std::time::Instant::now();
-                    }
-
-                    // Send NDI frame (uses existing pixel_buffer) only if go_live is true
-                    if slide.go_live {
                         let video_data = VideoData::from_buffer(
                             width as i32,
                             height as i32,
-                            FourCCVideoType::BGRA,
-                            15,
+                            FourCCVideoType::BGRX,
+                            60,
                             1,
                             FrameFormatType::Progressive,
                             0,
@@ -373,6 +498,12 @@ impl NdiOutput {
         clearout: bool,
         go_live: bool,
         logo_image_path: Option<String>,
+        bg_type: String,
+        bg_path: Option<String>,
+        font_size: f64,
+        scale: f64,
+        align: String,
+        shadow: bool,
     ) {
         let mut lock = self.current_slide.lock().unwrap();
         *lock = Some(NdiSlideData {
@@ -384,6 +515,12 @@ impl NdiOutput {
             clearout,
             go_live,
             logo_image_path,
+            bg_type,
+            bg_path,
+            font_size,
+            scale,
+            align,
+            shadow,
         });
     }
 }

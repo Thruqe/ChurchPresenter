@@ -10,7 +10,7 @@ use std::rc::Rc;
 use crate::db::{
     autocomplete_book_name, get_songs, parse_reference, query_verses, query_verses_by_mode,
 };
-use crate::models::{AppState, Verse};
+use crate::models::{AppState, Verse, SongStanza};
 
 fn draw_background(
     cr: &gtk::cairo::Context,
@@ -20,6 +20,7 @@ fn draw_background(
     blackout: bool,
     logo_mode: bool,
     logo_image_path: Option<&str>,
+    song_stanza: Option<&SongStanza>,
 ) {
     if blackout {
         cr.set_source_rgb(0.0, 0.0, 0.0);
@@ -43,6 +44,31 @@ fn draw_background(
         }
         cr.set_source_rgb(0.0, 0.0, 0.0);
         let _ = cr.paint();
+    } else if let Some(stanza) = song_stanza {
+        if stanza.bg_type == "image" {
+            if let Some(ref bg_path) = stanza.bg_path {
+                let path = std::path::Path::new(bg_path);
+                if path.exists() && path.is_file() {
+                    if let Ok(pixbuf) = gtk::gdk_pixbuf::Pixbuf::from_file(bg_path) {
+                        if let Some(scaled) = pixbuf.scale_simple(
+                            width as i32,
+                            height as i32,
+                            gtk::gdk_pixbuf::InterpType::Bilinear,
+                        ) {
+                            cr.set_source_pixbuf(&scaled, 0.0, 0.0);
+                            let _ = cr.paint();
+                            return;
+                        }
+                    }
+                }
+            }
+            cr.set_source_rgb(0.0, 0.0, 0.0);
+            let _ = cr.paint();
+        } else {
+            // Lower third / transparent -> Draw dark slate in preview so white text is visible
+            cr.set_source_rgb(0.1, 0.12, 0.15);
+            let _ = cr.paint();
+        }
     } else {
         let path = std::path::Path::new(theme);
         if path.exists() && path.is_file() {
@@ -76,6 +102,86 @@ fn draw_background(
     }
 }
 
+fn draw_song_text(
+    cr: &gtk::cairo::Context,
+    width: f64,
+    height: f64,
+    lyrics: &str,
+    font_size: f64,
+    scale: f64,
+    align: &str,
+    shadow: bool,
+    bg_type: &str,
+    alpha: f64,
+) {
+    let actual_font_size = font_size * scale;
+    cr.set_font_size(actual_font_size);
+
+    let (text_min_y, text_max_y, margin_x) = if bg_type == "lower_transparent" {
+        (height - height * 0.35 + 10.0, height - 10.0, width * 0.05)
+    } else {
+        (height * 0.1, height * 0.9, width * 0.075)
+    };
+
+    let max_text_width = width - margin_x * 2.0;
+
+    let mut wrapped_lines = Vec::new();
+    for line in lyrics.lines() {
+        let mut current_line = String::new();
+        for word in line.split_whitespace() {
+            let test_line = if current_line.is_empty() {
+                word.to_string()
+            } else {
+                format!("{} {}", current_line, word)
+            };
+            if let Ok(ext) = cr.text_extents(&test_line) {
+                if ext.width() > max_text_width {
+                    if !current_line.is_empty() {
+                        wrapped_lines.push(current_line);
+                    }
+                    current_line = word.to_string();
+                } else {
+                    current_line = test_line;
+                }
+            }
+        }
+        if !current_line.is_empty() {
+            wrapped_lines.push(current_line);
+        }
+    }
+
+    let line_spacing = actual_font_size * 1.35;
+    let total_height = if wrapped_lines.is_empty() {
+        0.0
+    } else {
+        (wrapped_lines.len() - 1) as f64 * line_spacing + actual_font_size
+    };
+
+    let start_y = text_min_y + ((text_max_y - text_min_y) - total_height) / 2.0;
+    let mut current_y = start_y + actual_font_size * 0.8;
+
+    for line in &wrapped_lines {
+        if let Ok(ext) = cr.text_extents(line) {
+            let x = match align {
+                "left" => margin_x,
+                "right" => width - ext.width() - margin_x,
+                _ => (width - ext.width()) / 2.0,
+            };
+
+            if shadow {
+                cr.set_source_rgba(0.0, 0.0, 0.0, 0.7 * alpha);
+                cr.move_to(x + 2.0, current_y + 2.0);
+                let _ = cr.show_text(line);
+            }
+
+            cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
+            cr.move_to(x, current_y);
+            let _ = cr.show_text(line);
+        }
+        current_y += line_spacing;
+    }
+}
+
 fn draw_single_slide_text(
     cr: &gtk::cairo::Context,
     width: f64,
@@ -87,13 +193,14 @@ fn draw_single_slide_text(
     blackout: bool,
     alpha: f64,
     has_logo_image: bool,
+    song_stanza: Option<&SongStanza>,
 ) {
     use gtk::cairo::{FontSlant, FontWeight};
     cr.select_font_face("Tahoma", FontSlant::Normal, FontWeight::Bold);
 
     if logo_mode && !blackout {
         if !has_logo_image {
-            cr.set_font_size(height * 0.074); // Scale font size based on height
+            cr.set_font_size(height * 0.074);
             cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
 
             let logo_cross = "✝";
@@ -116,78 +223,93 @@ fn draw_single_slide_text(
             }
         }
     } else if !blackout && !clearout {
-        let body_font_size = height * 0.06;
-        let header_font_size = height * 0.045;
+        if let Some(stanza) = song_stanza {
+            if stanza.bg_type == "lower_transparent" {
+                cr.set_source_rgba(0.0, 0.0, 0.0, 0.6 * alpha);
+                let rect_height = height * 0.35;
+                let rect_y = height - rect_height;
+                cr.rectangle(0.0, rect_y, width, rect_height);
+                let _ = cr.fill();
+            }
 
-        println!(
-            "DEBUG: UI canvas draw_single_slide_text — height={:.1}, body_font_size={:.1}",
-            height, body_font_size
-        );
+            draw_song_text(
+                cr,
+                width,
+                height,
+                &stanza.lyrics,
+                stanza.font_size,
+                stanza.scale,
+                &stanza.align,
+                stanza.shadow,
+                &stanza.bg_type,
+                alpha,
+            );
+        } else {
+            let body_font_size = height * 0.06;
+            let header_font_size = height * 0.045;
 
-        // Wrap body text
-        let max_width = width - width * 0.15; // 15% margin
-        let mut wrapped_lines = Vec::new();
+            println!(
+                "DEBUG: UI canvas draw_single_slide_text — height={:.1}, body_font_size={:.1}",
+                height, body_font_size
+            );
 
-        cr.set_font_size(body_font_size);
-        cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
+            let max_width = width - width * 0.15;
+            let mut wrapped_lines = Vec::new();
 
-        for line in body.lines() {
-            let mut current_line = String::new();
-            for word in line.split_whitespace() {
-                let test_line = if current_line.is_empty() {
-                    word.to_string()
-                } else {
-                    format!("{} {}", current_line, word)
-                };
-                if let Ok(ext) = cr.text_extents(&test_line) {
-                    if ext.width() > max_width {
-                        if !current_line.is_empty() {
-                            wrapped_lines.push(current_line);
-                        }
-                        current_line = word.to_string();
+            cr.set_font_size(body_font_size);
+            cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
+
+            for line in body.lines() {
+                let mut current_line = String::new();
+                for word in line.split_whitespace() {
+                    let test_line = if current_line.is_empty() {
+                        word.to_string()
                     } else {
-                        current_line = test_line;
+                        format!("{} {}", current_line, word)
+                    };
+                    if let Ok(ext) = cr.text_extents(&test_line) {
+                        if ext.width() > max_width {
+                            if !current_line.is_empty() {
+                                wrapped_lines.push(current_line);
+                            }
+                            current_line = word.to_string();
+                        } else {
+                            current_line = test_line;
+                        }
                     }
                 }
+                if !current_line.is_empty() {
+                    wrapped_lines.push(current_line);
+                }
             }
-            if !current_line.is_empty() {
-                wrapped_lines.push(current_line);
+
+            let line_spacing = height * 0.06;
+            let total_body_height = if wrapped_lines.is_empty() {
+                0.0
+            } else {
+                (wrapped_lines.len() - 1) as f64 * line_spacing + body_font_size
+            };
+
+            let start_y = (height - total_body_height) / 2.0;
+
+            let mut current_y = start_y + body_font_size * 0.8;
+            for line in &wrapped_lines {
+                if let Ok(ext) = cr.text_extents(line) {
+                    cr.move_to((width - ext.width()) / 2.0, current_y);
+                    let _ = cr.show_text(line);
+                }
+                current_y += line_spacing;
+            }
+
+            cr.set_font_size(header_font_size);
+            cr.set_source_rgba(0.85, 0.85, 0.85, alpha);
+            if let Ok(ext) = cr.text_extents(header) {
+                let header_x = width - ext.width() - width * 0.075;
+                let header_y = current_y + height * 0.02;
+                cr.move_to(header_x, header_y);
+                let _ = cr.show_text(header);
             }
         }
-
-        // Calculate vertical metrics
-        let line_spacing = height * 0.06;
-        let total_body_height = if wrapped_lines.is_empty() {
-            0.0
-        } else {
-            (wrapped_lines.len() - 1) as f64 * line_spacing + body_font_size
-        };
-
-        // Center the body block vertically
-        let start_y = (height - total_body_height) / 2.0;
-
-        // Draw body lines centered
-        let mut current_y = start_y + body_font_size * 0.8; // adjust for baseline
-        for line in &wrapped_lines {
-            if let Ok(ext) = cr.text_extents(line) {
-                cr.move_to((width - ext.width()) / 2.0, current_y);
-                let _ = cr.show_text(line);
-            }
-            current_y += line_spacing;
-        }
-
-        // Draw header (verse reference) below the body, aligned right
-        cr.set_font_size(header_font_size);
-        cr.set_source_rgba(0.85, 0.85, 0.85, alpha); // slightly gray for contrast
-        if let Ok(ext) = cr.text_extents(header) {
-            // Aligned right with same margin as body (width * 0.075 from right margin)
-            let header_x = width - ext.width() - width * 0.075;
-            let header_y = current_y + height * 0.02; // spacing below body
-            cr.move_to(header_x, header_y);
-            let _ = cr.show_text(header);
-        }
-    } else if clearout && !blackout {
-        // Clearout: show only background, no text drawn
     }
 }
 
@@ -205,18 +327,17 @@ fn draw_slide_cairo(
     logo_mode: bool,
     clearout: bool,
     logo_image_path: Option<&str>,
+    song_stanza: Option<&SongStanza>,
+    prev_song_stanza: Option<&SongStanza>,
 ) {
     let has_logo_image = logo_image_path.is_some();
-    // 1. Draw target background instantly
-    draw_background(cr, width, height, theme, blackout, logo_mode, logo_image_path);
+    draw_background(cr, width, height, theme, blackout, logo_mode, logo_image_path, song_stanza);
 
-    // 2. Draw text with transition if active
     if let Some(start) = trans_start {
         let elapsed = start.elapsed().as_millis() as f64;
         let duration = 800.0;
         if elapsed < duration {
             let progress = elapsed / duration;
-            // Draw previous slide text fading out
             draw_single_slide_text(
                 cr,
                 width,
@@ -228,8 +349,8 @@ fn draw_slide_cairo(
                 blackout,
                 1.0 - progress,
                 has_logo_image,
+                prev_song_stanza,
             );
-            // Draw new slide text fading in
             draw_single_slide_text(
                 cr,
                 width,
@@ -241,12 +362,12 @@ fn draw_slide_cairo(
                 blackout,
                 progress,
                 has_logo_image,
+                song_stanza,
             );
             return;
         }
     }
 
-    // Default: draw only target text at 100% opacity
     draw_single_slide_text(
         cr,
         width,
@@ -258,7 +379,270 @@ fn draw_slide_cairo(
         blackout,
         1.0,
         has_logo_image,
+        song_stanza,
     );
+}
+
+fn refresh_preview_text_mode(
+    state: &Rc<RefCell<AppState>>,
+    preview_text_container: &gtk::Box,
+    update_live_layout: &Rc<dyn Fn()>,
+    preview_drawing_area: &gtk::DrawingArea,
+    preview_title_label: &gtk::Label,
+) {
+    while let Some(child) = preview_text_container.first_child() {
+        preview_text_container.remove(&child);
+    }
+
+    let s = state.borrow();
+    if s.current_selection_type == 0 {
+        let ref_label = gtk::Label::builder()
+            .label(&s.preview_header)
+            .xalign(0.0)
+            .build();
+        ref_label.add_css_class("text-output-reference");
+
+        let body_label = gtk::Label::builder()
+            .label(&s.preview_body)
+            .xalign(0.0)
+            .wrap(true)
+            .wrap_mode(gtk::pango::WrapMode::WordChar)
+            .build();
+        body_label.add_css_class("text-output-body");
+
+        let card_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .build();
+        card_box.add_css_class("preview-text-green");
+        card_box.append(&ref_label);
+        card_box.append(&body_label);
+
+        preview_text_container.append(&card_box);
+    } else {
+        if let Some(ref stanzas) = s.preview_song_stanzas {
+            let song_title = s.selected_song_index
+                .map(|idx| s.songs[idx].title.clone())
+                .unwrap_or_default();
+
+            for (idx, stanza) in stanzas.iter().enumerate() {
+                let display_ref = format!("{} - {}", song_title, stanza.name);
+                let ref_label = gtk::Label::builder()
+                    .label(&display_ref)
+                    .xalign(0.0)
+                    .build();
+                ref_label.add_css_class("text-output-reference");
+
+                let body_label = gtk::Label::builder()
+                    .label(&stanza.lyrics)
+                    .xalign(0.0)
+                    .wrap(true)
+                    .wrap_mode(gtk::pango::WrapMode::WordChar)
+                    .build();
+                body_label.add_css_class("text-output-body");
+
+                let card_box = gtk::Box::builder()
+                    .orientation(gtk::Orientation::Vertical)
+                    .build();
+                card_box.add_css_class("preview-text-green");
+                card_box.append(&ref_label);
+                card_box.append(&body_label);
+
+                if Some(idx) == s.selected_stanza_index {
+                    card_box.add_css_class("live-slide-active");
+                }
+
+                let click_gesture = gtk::GestureClick::new();
+                let state_c = state.clone();
+                let preview_drawing_area_c = preview_drawing_area.clone();
+                let preview_title_label_c = preview_title_label.clone();
+                let preview_text_container_c = preview_text_container.clone();
+                let update_live_layout_c = update_live_layout.clone();
+                let song_title_c = song_title.clone();
+                let lyrics_c = stanza.lyrics.clone();
+                let name_c = stanza.name.clone();
+
+                click_gesture.connect_released(move |_, _, _, _| {
+                    let mut s_mut = state_c.borrow_mut();
+                    s_mut.selected_stanza_index = Some(idx);
+                    s_mut.preview_header = format!("{} - {}", song_title_c, name_c);
+                    s_mut.preview_body = lyrics_c.clone();
+                    preview_title_label_c.set_text(&format!("Preview - {} ({})", song_title_c, name_c));
+                    drop(s_mut);
+                    preview_drawing_area_c.queue_draw();
+                    refresh_preview_text_mode(
+                        &state_c,
+                        &preview_text_container_c,
+                        &update_live_layout_c,
+                        &preview_drawing_area_c,
+                        &preview_title_label_c,
+                    );
+                });
+                card_box.add_controller(click_gesture);
+
+                let dclick_gesture = gtk::GestureClick::new();
+                dclick_gesture.set_button(1);
+                let state_dc = state.clone();
+                let song_title_dc = song_title.clone();
+                let stanzas_dc = stanzas.clone();
+                let update_live_layout_dc = update_live_layout.clone();
+                dclick_gesture.connect_pressed(move |gesture, n_press, _, _| {
+                    if n_press == 2 {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        let mut s_mut = state_dc.borrow_mut();
+                        s_mut.live_song_stanzas = Some(stanzas_dc.clone());
+                        s_mut.live_slides = stanzas_dc
+                            .iter()
+                            .map(|st| (format!("{} - {}", song_title_dc, st.name), st.lyrics.clone()))
+                            .collect();
+                        s_mut.live_title = format!("Live - {}", song_title_dc);
+                        s_mut.live_active_index = Some(idx);
+                        s_mut.blackout = false;
+                        s_mut.clearout = false;
+                        s_mut.logo_mode = false;
+                        drop(s_mut);
+                        update_live_layout_dc();
+                    }
+                });
+                card_box.add_controller(dclick_gesture);
+
+                preview_text_container.append(&card_box);
+            }
+        }
+    }
+}
+
+fn refresh_live_text_mode(
+    state: &Rc<RefCell<AppState>>,
+    live_text_container: &gtk::Box,
+    live_drawing_area: &gtk::DrawingArea,
+    ndi_out: &crate::ndi_out::NdiOutput,
+    black_btn: &gtk::Button,
+    logo_btn: &gtk::Button,
+    clear_btn: &gtk::Button,
+) {
+    while let Some(child) = live_text_container.first_child() {
+        live_text_container.remove(&child);
+    }
+
+    let (_live_slides, live_active_index, live_title, blackout_val, logo_val, clearout_val, _go_live_val, _logo_image_path_val) = {
+        let s = state.borrow();
+        (
+            s.live_slides.clone(),
+            s.live_active_index,
+            s.live_title.clone(),
+            s.blackout,
+            s.logo_mode,
+            s.clearout,
+            s.go_live_active,
+            s.logo_image_path.clone(),
+        )
+    };
+
+    let s = state.borrow();
+    if s.live_song_stanzas.is_none() {
+        let ref_label = gtk::Label::builder()
+            .label(if blackout_val { "" } else if logo_val { "ChurchPresenter" } else { &s.live_current_header })
+            .xalign(0.0)
+            .build();
+        ref_label.add_css_class("text-output-reference");
+
+        let body_label = gtk::Label::builder()
+            .label(if blackout_val { "" } else if logo_val { "✝\nStandby Screen" } else if clearout_val { "" } else { &s.live_current_body })
+            .xalign(0.0)
+            .wrap(true)
+            .wrap_mode(gtk::pango::WrapMode::WordChar)
+            .build();
+        body_label.add_css_class("text-output-body");
+
+        let card_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .build();
+        card_box.add_css_class("preview-text-green");
+        card_box.append(&ref_label);
+        card_box.append(&body_label);
+
+        live_text_container.append(&card_box);
+    } else {
+        if let Some(ref stanzas) = s.live_song_stanzas {
+            let song_title = live_title.replace("Live - ", "");
+            for (idx, stanza) in stanzas.iter().enumerate() {
+                let display_ref = if blackout_val {
+                    String::new()
+                } else if logo_val {
+                    "ChurchPresenter".to_string()
+                } else {
+                    format!("{} - {}", song_title, stanza.name)
+                };
+
+                let ref_label = gtk::Label::builder()
+                    .label(&display_ref)
+                    .xalign(0.0)
+                    .build();
+                ref_label.add_css_class("text-output-reference");
+
+                let body_label = gtk::Label::builder()
+                    .label(if blackout_val { "" } else if logo_val { "✝\nStandby Screen" } else if clearout_val { "" } else { &stanza.lyrics })
+                    .xalign(0.0)
+                    .wrap(true)
+                    .wrap_mode(gtk::pango::WrapMode::WordChar)
+                    .build();
+                body_label.add_css_class("text-output-body");
+
+                let card_box = gtk::Box::builder()
+                    .orientation(gtk::Orientation::Vertical)
+                    .build();
+                card_box.add_css_class("preview-text-green");
+                card_box.append(&ref_label);
+                card_box.append(&body_label);
+
+                if Some(idx) == live_active_index {
+                    card_box.add_css_class("live-slide-active");
+                }
+
+                let click_gesture = gtk::GestureClick::new();
+                let state_c = state.clone();
+                let live_drawing_area_c = live_drawing_area.clone();
+                let live_text_container_c = live_text_container.clone();
+                let ndi_out_c = ndi_out.clone();
+                let black_btn_c = black_btn.clone();
+                let logo_btn_c = logo_btn.clone();
+                let clear_btn_c = clear_btn.clone();
+                let song_title_c = song_title.clone();
+                let stanzas_c = stanzas.clone();
+
+                click_gesture.connect_released(move |_, _, _, _| {
+                    let mut s_mut = state_c.borrow_mut();
+                    if s_mut.live_active_index != Some(idx) {
+                        s_mut.live_prev_header = s_mut.live_current_header.clone();
+                        s_mut.live_prev_body = s_mut.live_current_body.clone();
+                        s_mut.live_current_header = format!("{} - {}", song_title_c, stanzas_c[idx].name);
+                        s_mut.live_current_body = stanzas_c[idx].lyrics.clone();
+                        s_mut.live_active_index = Some(idx);
+                        s_mut.live_trans_start = Some(std::time::Instant::now());
+
+                        s_mut.blackout = false;
+                        s_mut.clearout = false;
+                        s_mut.logo_mode = false;
+                    }
+                    drop(s_mut);
+
+                    start_live_transition(&live_drawing_area_c, &state_c);
+                    refresh_live_text_mode(
+                        &state_c,
+                        &live_text_container_c,
+                        &live_drawing_area_c,
+                        &ndi_out_c,
+                        &black_btn_c,
+                        &logo_btn_c,
+                        &clear_btn_c,
+                    );
+                });
+                card_box.add_controller(click_gesture);
+
+                live_text_container.append(&card_box);
+            }
+        }
+    }
 }
 
 fn start_live_transition(drawing_area: &gtk::DrawingArea, state: &Rc<RefCell<AppState>>) {
@@ -551,6 +935,7 @@ pub fn build_ui(app: &Application) {
     crate::db::init_media_table();
     crate::db::init_themes_table();
     crate::db::init_config_table();
+    crate::db::init_songs_tables();
     let persisted_themes = crate::db::get_all_themes();
     let logo_image_path = crate::db::get_config_value("logo_image_path");
 
@@ -603,6 +988,8 @@ pub fn build_ui(app: &Application) {
         logo_mode: false,
         go_live_active: true,
         logo_image_path,
+        live_song_stanzas: None,
+        preview_song_stanzas: None,
         custom_themes: persisted_themes.clone(),
         custom_background_path,
         preview_header: "Genesis 1:1 (KJV)".to_string(),
@@ -613,6 +1000,17 @@ pub fn build_ui(app: &Application) {
         live_prev_body: String::new(),
         live_trans_start: None,
     }));
+
+    // Shared reference to update_live_layout to allow callers to refer to it before it is fully defined
+    let update_live_layout_rc: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
+    let update_live_layout: Rc<dyn Fn()> = Rc::new({
+        let update_live_layout_rc = update_live_layout_rc.clone();
+        move || {
+            if let Some(ref f) = *update_live_layout_rc.borrow() {
+                f();
+            }
+        }
+    });
 
     // 3. Assemble Main Layout Box
     let main_box = Box::builder().orientation(Orientation::Vertical).build();
@@ -929,6 +1327,15 @@ pub fn build_ui(app: &Application) {
         } else {
             theme
         };
+        let song_stanza_ref = if s.current_selection_type == 1 {
+            if let Some(ref stanzas) = s.preview_song_stanzas {
+                s.selected_stanza_index.and_then(|idx| stanzas.get(idx))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         draw_slide_cairo(
             cr,
             width as f64,
@@ -943,6 +1350,8 @@ pub fn build_ui(app: &Application) {
             false,
             false,
             s.logo_image_path.as_deref(),
+            song_stanza_ref,
+            None,
         );
     });
 
@@ -1090,6 +1499,16 @@ pub fn build_ui(app: &Application) {
             active_body = "[Standby - Projection Off]".to_string();
         }
 
+        let live_song_stanza_ref = if let Some(ref stanzas) = s.live_song_stanzas {
+            s.live_active_index.and_then(|idx| stanzas.get(idx))
+        } else {
+            None
+        };
+        let live_prev_song_stanza_ref = if let Some(ref stanzas) = s.live_song_stanzas {
+            stanzas.iter().find(|st| st.lyrics == s.live_prev_body)
+        } else {
+            None
+        };
         draw_slide_cairo(
             cr,
             width as f64,
@@ -1104,6 +1523,8 @@ pub fn build_ui(app: &Application) {
             s.logo_mode,
             s.clearout,
             s.logo_image_path.as_deref(),
+            live_song_stanza_ref,
+            live_prev_song_stanza_ref,
         );
     });
 
@@ -1175,11 +1596,24 @@ pub fn build_ui(app: &Application) {
         let stack = preview_stack.clone();
         let btn_vis = preview_toggle_visual.clone();
         let btn_txt = preview_toggle_text.clone();
+        let state_c = state.clone();
+        let preview_text_container_c = preview_text_container.clone();
+        let update_live_layout_c = update_live_layout.clone();
+        let preview_drawing_area_c = preview_drawing_area.clone();
+        let preview_title_label_c = preview_title_label.clone();
         preview_toggle_text.connect_clicked(move |_| {
             println!("DEBUG: connect_clicked triggered at line 706");
             stack.set_visible_child_name("text");
             btn_txt.add_css_class("view-toggle-btn-active");
             btn_vis.remove_css_class("view-toggle-btn-active");
+
+            refresh_preview_text_mode(
+                &state_c,
+                &preview_text_container_c,
+                &update_live_layout_c,
+                &preview_drawing_area_c,
+                &preview_title_label_c,
+            );
         });
 
         let stack = live_monitor_stack.clone();
@@ -1247,6 +1681,29 @@ pub fn build_ui(app: &Application) {
                 active_body = "[Standby - Projection Off]".to_string();
             }
 
+            let (bg_type, bg_path, font_size, scale, align, shadow) = {
+                if let Some(ref stanzas) = s.live_song_stanzas {
+                    if let Some(active_idx) = s.live_active_index {
+                        if let Some(stanza) = stanzas.get(active_idx) {
+                            (
+                                stanza.bg_type.clone(),
+                                stanza.bg_path.clone(),
+                                stanza.font_size,
+                                stanza.scale,
+                                stanza.align.clone(),
+                                stanza.shadow,
+                            )
+                        } else {
+                            (String::new(), None, 40.0, 1.0, "center".to_string(), false)
+                        }
+                    } else {
+                        (String::new(), None, 40.0, 1.0, "center".to_string(), false)
+                    }
+                } else {
+                    (String::new(), None, 40.0, 1.0, "center".to_string(), false)
+                }
+            };
+
             ndi_out.update_slide(
                 active_header,
                 active_body,
@@ -1260,6 +1717,12 @@ pub fn build_ui(app: &Application) {
                 s.clearout,
                 s.go_live_active,
                 s.logo_image_path.clone(),
+                bg_type,
+                bg_path,
+                font_size,
+                scale,
+                align,
+                shadow,
             );
         }
     });
@@ -1340,6 +1803,15 @@ pub fn build_ui(app: &Application) {
         .vexpand(true)
         .build();
     songs_sidebar.append(&songs_scrolled);
+
+    let create_song_btn = Button::builder().label("Create Song").build();
+    create_song_btn.add_css_class("tab-button-active");
+    create_song_btn.set_margin_top(8);
+    create_song_btn.set_margin_bottom(8);
+    create_song_btn.set_margin_start(8);
+    create_song_btn.set_margin_end(8);
+    songs_sidebar.append(&create_song_btn);
+
     songs_view.append(&songs_sidebar);
 
     // Songs Main table (Stanzas)
@@ -1381,15 +1853,84 @@ pub fn build_ui(app: &Application) {
 
     resource_stack.add_named(&songs_view, Some("songs"));
 
-    // Populate Songs Sidebar
-    for song in state.borrow().songs.iter() {
-        let row_lbl = Label::builder()
-            .label(&format!("{}", song.title))
-            .xalign(0.0)
-            .build();
-        row_lbl.add_css_class("sidebar-row");
-        songs_list_box.append(&row_lbl);
-    }
+    // Populate Songs Sidebar with Right-click Context Popovers
+    let populate_songs_sidebar_rc: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
+    let populate_songs_sidebar = {
+        let state = state.clone();
+        let songs_list_box = songs_list_box.clone();
+        let populate_songs_sidebar_rc = populate_songs_sidebar_rc.clone();
+        move || {
+            while let Some(child) = songs_list_box.first_child() {
+                songs_list_box.remove(&child);
+            }
+            let songs = state.borrow().songs.clone();
+            for song in songs {
+                let row_lbl = Label::builder()
+                    .label(&song.title)
+                    .xalign(0.0)
+                    .build();
+                row_lbl.add_css_class("sidebar-row");
+
+                let popover = Popover::builder().has_arrow(true).build();
+                let p_box = Box::builder().orientation(Orientation::Vertical).spacing(0).build();
+                let edit_btn = Button::builder().label("Edit Song").build();
+                edit_btn.add_css_class("menu-item-button");
+                edit_btn.set_has_frame(false);
+                let delete_btn = Button::builder().label("Delete Song").build();
+                delete_btn.add_css_class("menu-item-button");
+                delete_btn.set_has_frame(false);
+                p_box.append(&edit_btn);
+                p_box.append(&delete_btn);
+                popover.set_child(Some(&p_box));
+                popover.set_parent(&row_lbl);
+
+                let click_gesture = gtk::GestureClick::builder().button(3).build();
+                let popover_c = popover.clone();
+                click_gesture.connect_released(move |_, _, _, _| {
+                    popover_c.popup();
+                });
+                row_lbl.add_controller(click_gesture);
+
+                let state_edit = state.clone();
+                let popover_edit_c = popover.clone();
+                let populate_songs_sidebar_rc_edit = populate_songs_sidebar_rc.clone();
+                edit_btn.connect_clicked(move |_| {
+                    popover_edit_c.popdown();
+                    let pop_fn = populate_songs_sidebar_rc_edit.borrow().as_ref().unwrap().clone();
+                    show_song_editor_window(&state_edit, song.id, pop_fn);
+                });
+
+                let state_delete = state.clone();
+                let popover_delete_c = popover.clone();
+                let populate_songs_sidebar_rc_delete = populate_songs_sidebar_rc.clone();
+                let song_id_val = song.id;
+                delete_btn.connect_clicked(move |_| {
+                    popover_delete_c.popdown();
+                    if let Some(sid) = song_id_val {
+                        crate::db::delete_song(sid);
+                        let mut s = state_delete.borrow_mut();
+                        s.songs = crate::db::get_songs();
+                        s.selected_song_index = None;
+                        s.selected_stanza_index = None;
+                    }
+                    let pop_fn = populate_songs_sidebar_rc_delete.borrow().as_ref().unwrap().clone();
+                    pop_fn();
+                });
+
+                songs_list_box.append(&row_lbl);
+            }
+        }
+    };
+
+    let populate_songs_sidebar_shared = Rc::new(populate_songs_sidebar);
+    *populate_songs_sidebar_rc.borrow_mut() = Some(populate_songs_sidebar_shared.clone());
+    populate_songs_sidebar_shared();
+
+    let state_c = state.clone();
+    let populate_songs_sidebar_shared_c = populate_songs_sidebar_shared.clone();
+    create_song_btn.connect_clicked(move |_| {
+        show_song_editor_window(&state_c, None, populate_songs_sidebar_shared_c.clone());
+    });
 
     // --- TAB PAGE 2: SCRIPTURES ---
     let scriptures_view = Box::builder().orientation(Orientation::Horizontal).build();
@@ -2056,6 +2597,8 @@ pub fn build_ui(app: &Application) {
     let preview_drawing_area_clone = preview_drawing_area.clone();
     let preview_text_ref_label_clone = preview_text_ref_label.clone();
     let preview_text_body_label_clone = preview_text_body_label.clone();
+    let preview_text_container_clone = preview_text_container.clone();
+    let update_live_layout_clone4 = update_live_layout.clone();
     let status_lbl_clone = status_lbl.clone();
     let state_clone = state.clone();
 
@@ -2080,6 +2623,7 @@ pub fn build_ui(app: &Application) {
             if let Some((orig_idx, verse)) = verse_data {
                 s.selected_verse_index = Some(orig_idx);
                 s.current_selection_type = 0; // Scripture
+                s.preview_song_stanzas = None;
 
                 println!(
                     "DEBUG: Selected verse: {} ({})",
@@ -2105,6 +2649,14 @@ pub fn build_ui(app: &Application) {
                     "{}  |  {} (Selected)  |  {} references available",
                     verse.translation, verse.reference, verses_len
                 ));
+
+                refresh_preview_text_mode(
+                    &state_clone,
+                    &preview_text_container_clone,
+                    &update_live_layout_clone4,
+                    &preview_drawing_area_clone,
+                    &preview_title_label_clone,
+                );
             }
         }
     });
@@ -2117,12 +2669,13 @@ pub fn build_ui(app: &Application) {
     let state_clone = state.clone();
 
     // Helper to push state's active live items to the Live layout
-    let update_live_layout = {
+    let actual_update_live_layout = {
         let live_slides_list = live_slides_list_clone.clone();
         let live_title_label = live_title_label_clone.clone();
         let live_drawing_area = live_drawing_area.clone();
         let live_text_ref_label = live_text_ref_label_clone.clone();
         let live_text_body_label = live_text_body_label_clone.clone();
+        let live_text_container = live_text_container.clone();
         let state = state_clone.clone();
         let ndi_out = ndi_out.clone();
         let logo_btn = logo_btn.clone();
@@ -2259,6 +2812,30 @@ pub fn build_ui(app: &Application) {
                 clear_btn.remove_css_class("toolbar-button-active");
             }
 
+            let (bg_type, bg_path, font_size, scale, align, shadow) = {
+                let s = state.borrow();
+                if let Some(ref stanzas) = s.live_song_stanzas {
+                    if let Some(active_idx) = s.live_active_index {
+                        if let Some(stanza) = stanzas.get(active_idx) {
+                            (
+                                stanza.bg_type.clone(),
+                                stanza.bg_path.clone(),
+                                stanza.font_size,
+                                stanza.scale,
+                                stanza.align.clone(),
+                                stanza.shadow,
+                            )
+                        } else {
+                            (String::new(), None, 40.0, 1.0, "center".to_string(), false)
+                        }
+                    } else {
+                        (String::new(), None, 40.0, 1.0, "center".to_string(), false)
+                    }
+                } else {
+                    (String::new(), None, 40.0, 1.0, "center".to_string(), false)
+                }
+            };
+
             ndi_out.update_slide(
                 active_header,
                 active_body,
@@ -2268,9 +2845,26 @@ pub fn build_ui(app: &Application) {
                 clearout_val,
                 go_live_val,
                 logo_image_path_val,
+                bg_type,
+                bg_path,
+                font_size,
+                scale,
+                align,
+                shadow,
+            );
+
+            refresh_live_text_mode(
+                &state,
+                &live_text_container,
+                &live_drawing_area,
+                &ndi_out,
+                &black_btn,
+                &logo_btn,
+                &clear_btn,
             );
         }
     };
+    *update_live_layout_rc.borrow_mut() = Some(Rc::new(actual_update_live_layout));
 
     let update_live_layout_clone = update_live_layout.clone();
     let state_clone = state.clone();
@@ -2294,6 +2888,7 @@ pub fn build_ui(app: &Application) {
                 s.live_slides = vec![slide.clone()];
                 s.live_title = format!("Live - {}", slide.0);
                 s.live_active_index = Some(0);
+                s.live_song_stanzas = None;
 
                 // Reset screen flags
                 s.blackout = false;
@@ -2313,6 +2908,9 @@ pub fn build_ui(app: &Application) {
             let populate = populate_verses_table.clone();
             let entry = script_search.clone();
             let update_live = update_live_layout.clone();
+            let preview_text_container = preview_text_container.clone();
+            let preview_drawing_area = preview_drawing_area.clone();
+            let preview_title_label = preview_title_label.clone();
             move |push_to_live: bool| {
                 println!("DEBUG: Closure executing...");
                 println!("DEBUG: move || closure triggered at line 1422");
@@ -2325,6 +2923,7 @@ pub fn build_ui(app: &Application) {
                 s.verses = new_verses;
                 s.selected_verse_index = None;
                 s.search_parsed_verse = verse;
+                s.preview_song_stanzas = None; // Reset preview song stanzas!
 
                 // Push matching verse to live if requested
                 if push_to_live && !s.verses.is_empty() {
@@ -2354,6 +2953,7 @@ pub fn build_ui(app: &Application) {
                         s.live_slides = vec![slide.clone()];
                         s.live_title = format!("Live - {}", slide.0);
                         s.live_active_index = Some(0);
+                        s.live_song_stanzas = None; // Reset live song stanzas!
 
                         // Reset screen flags
                         s.blackout = false;
@@ -2364,6 +2964,14 @@ pub fn build_ui(app: &Application) {
 
                 drop(s);
                 populate();
+
+                refresh_preview_text_mode(
+                    &state,
+                    &preview_text_container,
+                    &update_live,
+                    &preview_drawing_area,
+                    &preview_title_label,
+                );
 
                 if push_to_live {
                     update_live();
@@ -2533,10 +3141,11 @@ pub fn build_ui(app: &Application) {
         let song_stanzas_list_box = song_stanzas_list_box_clone.clone();
         let preview_title_label = preview_title_label.clone();
         let preview_drawing_area = preview_drawing_area.clone();
+        let preview_text_container = preview_text_container.clone();
+        let update_live_layout = update_live_layout.clone();
 
         move || {
             println!("DEBUG: Closure executing...");
-            println!("DEBUG: move || closure triggered at line 1589");
             while let Some(child) = song_stanzas_list_box.first_child() {
                 song_stanzas_list_box.remove(&child);
             }
@@ -2547,7 +3156,7 @@ pub fn build_ui(app: &Application) {
             };
 
             if let Some(song) = song_data {
-                for (stanza_idx, stanza_text) in song.stanzas.iter().enumerate() {
+                for (_stanza_idx, stanza) in song.stanzas.iter().enumerate() {
                     let row_box = Box::builder()
                         .orientation(Orientation::Horizontal)
                         .spacing(10)
@@ -2555,14 +3164,14 @@ pub fn build_ui(app: &Application) {
                     row_box.add_css_class("table-row");
 
                     let label_idx = Label::builder()
-                        .label(&format!("Stanza {}", stanza_idx + 1))
+                        .label(&stanza.name)
                         .xalign(0.0)
                         .width_request(80)
                         .build();
                     label_idx.add_css_class("table-cell-text");
 
                     let label_text = Label::builder()
-                        .label(&stanza_text.replace("\n", " / "))
+                        .label(&stanza.lyrics.replace("\n", " / "))
                         .xalign(0.0)
                         .hexpand(true)
                         .wrap(true)
@@ -2576,14 +3185,29 @@ pub fn build_ui(app: &Application) {
                 }
 
                 let mut s = state.borrow_mut();
-                // Default preview to first stanza
                 s.selected_stanza_index = Some(0);
                 s.current_selection_type = 1; // Song
+                s.preview_song_stanzas = Some(song.stanzas.clone());
 
-                preview_title_label.set_text(&format!("Preview - {} (Stanza 1)", song.title));
-                s.preview_header = format!("{} - Stanza 1", song.title);
-                s.preview_body = song.stanzas[0].to_string();
+                if !song.stanzas.is_empty() {
+                    preview_title_label.set_text(&format!("Preview - {} ({})", song.title, song.stanzas[0].name));
+                    s.preview_header = format!("{} - {}", song.title, song.stanzas[0].name);
+                    s.preview_body = song.stanzas[0].lyrics.clone();
+                } else {
+                    preview_title_label.set_text(&format!("Preview - {}", song.title));
+                    s.preview_header = song.title.clone();
+                    s.preview_body = String::new();
+                }
+                drop(s);
                 preview_drawing_area.queue_draw();
+
+                refresh_preview_text_mode(
+                    &state,
+                    &preview_text_container,
+                    &update_live_layout,
+                    &preview_drawing_area,
+                    &preview_title_label,
+                );
             }
         }
     };
@@ -2591,7 +3215,7 @@ pub fn build_ui(app: &Application) {
     let populate_song_stanzas_clone = populate_song_stanzas.clone();
     let state_clone = state.clone();
     songs_list_box.connect_row_selected(move |_, row| {
-        println!("DEBUG: connect_row_selected triggered at line 1643");
+        println!("DEBUG: connect_row_selected triggered for songs list");
         if let Some(row) = row {
             let row_idx = row.index() as usize;
             let mut s = state_clone.borrow_mut();
@@ -2605,9 +3229,11 @@ pub fn build_ui(app: &Application) {
     let state_clone = state.clone();
     let preview_title_label_clone = preview_title_label.clone();
     let preview_drawing_area_clone = preview_drawing_area.clone();
+    let preview_text_container_clone = preview_text_container.clone();
+    let update_live_layout_clone = update_live_layout.clone();
 
     song_stanzas_list_box.connect_row_selected(move |_, row| {
-        println!("DEBUG: connect_row_selected triggered at line 1660");
+        println!("DEBUG: connect_row_selected triggered for stanzas table");
         if let Some(row) = row {
             let row_idx = row.index() as usize;
             let mut s = state_clone.borrow_mut();
@@ -2615,20 +3241,28 @@ pub fn build_ui(app: &Application) {
             s.current_selection_type = 1; // Song
 
             if let Some(song_idx) = s.selected_song_index {
-                let song = &s.songs[song_idx];
-                if let Some(stanza_text) = song.stanzas.get(row_idx) {
-                    let title = song.title;
-                    let text = stanza_text.to_string();
+                let song_data = s.songs[song_idx].clone();
+                if let Some(stanza) = song_data.stanzas.get(row_idx) {
+                    let title = &song_data.title;
+                    let text = stanza.lyrics.clone();
                     preview_title_label_clone.set_text(&format!(
-                        "Preview - {} (Stanza {})",
+                        "Preview - {} ({})",
                         title,
-                        row_idx + 1
+                        stanza.name
                     ));
-                    s.preview_header = format!("{} - Stanza {}", title, row_idx + 1);
+                    s.preview_header = format!("{} - {}", title, stanza.name);
                     s.preview_body = text;
-
+                    s.preview_song_stanzas = Some(song_data.stanzas.clone());
                     drop(s);
                     preview_drawing_area_clone.queue_draw();
+
+                    refresh_preview_text_mode(
+                        &state_clone,
+                        &preview_text_container_clone,
+                        &update_live_layout_clone,
+                        &preview_drawing_area_clone,
+                        &preview_title_label_clone,
+                    );
                 }
             }
         }
@@ -2643,14 +3277,14 @@ pub fn build_ui(app: &Application) {
 
         if let Some(song_idx) = s.selected_song_index {
             let song = s.songs[song_idx].clone();
+            s.live_song_stanzas = Some(song.stanzas.clone());
             s.live_slides = song
                 .stanzas
                 .iter()
-                .enumerate()
-                .map(|(idx, text)| {
+                .map(|stanza| {
                     (
-                        format!("{} - Stanza {}", song.title, idx + 1),
-                        text.to_string(),
+                        format!("{} - {}", song.title, stanza.name),
+                        stanza.lyrics.clone(),
                     )
                 })
                 .collect();
@@ -2902,4 +3536,806 @@ pub fn build_ui(app: &Application) {
     window.add_controller(key_controller);
 
     window.present();
+}
+
+fn show_song_editor_window(
+    state: &Rc<RefCell<AppState>>,
+    song_id: Option<i64>,
+    populate_songs_sidebar: Rc<dyn Fn()>,
+) {
+    use crate::models::{Song, SongStanza};
+    use gtk::prelude::*;
+    use gtk::{
+        Box, Button, CheckButton, DropDown, Entry, Label, ListBox, ListBoxRow, Orientation,
+        Scale, ScrolledWindow, TextView, Window,
+    };
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    // Load initial song data or start fresh
+    let mut initial_song = Song {
+        id: song_id,
+        title: String::new(),
+        stanzas: vec![SongStanza {
+            name: "Verse 1".to_string(),
+            lyrics: "Enter lyrics here".to_string(),
+            bg_type: "transparent".to_string(),
+            bg_path: None,
+            font_size: 40.0,
+            scale: 1.0,
+            align: "center".to_string(),
+            shadow: false,
+        }],
+    };
+
+    if let Some(sid) = song_id {
+        let songs = crate::db::get_songs();
+        if let Some(loaded) = songs.into_iter().find(|s| s.id == Some(sid)) {
+            initial_song = loaded;
+        }
+    }
+
+    let song_state = Rc::new(RefCell::new(initial_song));
+    let active_stanza_idx = Rc::new(RefCell::new(0usize));
+    let is_updating_controls = Rc::new(RefCell::new(false));
+
+    // History stack for Undo/Redo
+    let undo_stack = Rc::new(RefCell::new(Vec::<Song>::new()));
+    let redo_stack = Rc::new(RefCell::new(Vec::<Song>::new()));
+
+    // Create the window
+    let editor_win = Window::builder()
+        .title(if song_id.is_some() { "Edit Song" } else { "Create Song" })
+        .modal(true)
+        .default_width(960)
+        .default_height(700)
+        .build();
+
+    let main_box = Box::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(10)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    editor_win.set_child(Some(&main_box));
+
+    // Top Header: Title input and Actions
+    let top_bar = Box::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(10)
+        .build();
+
+    let title_lbl = Label::builder().label("Song Title:").build();
+    let title_entry = Entry::builder()
+        .text(&song_state.borrow().title)
+        .hexpand(true)
+        .build();
+
+    let undo_btn = Button::builder().label("Undo").sensitive(false).build();
+    let redo_btn = Button::builder().label("Redo").sensitive(false).build();
+    let add_stanza_btn = Button::builder().label("Add Stanza").build();
+    let save_btn = Button::builder().label("Save Song").build();
+
+    top_bar.append(&title_lbl);
+    top_bar.append(&title_entry);
+    top_bar.append(&undo_btn);
+    top_bar.append(&redo_btn);
+    top_bar.append(&add_stanza_btn);
+    top_bar.append(&save_btn);
+    main_box.append(&top_bar);
+
+    // Body: Split Left and Right
+    let body_box = Box::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(10)
+        .vexpand(true)
+        .build();
+    main_box.append(&body_box);
+
+    // Left Panel: Stanzas List
+    let left_panel = Box::builder()
+        .orientation(Orientation::Vertical)
+        .width_request(200)
+        .spacing(6)
+        .build();
+    body_box.append(&left_panel);
+
+    let stanzas_lbl = Label::builder().label("Stanzas Layout").xalign(0.0).build();
+    stanzas_lbl.add_css_class("sidebar-section-header");
+    left_panel.append(&stanzas_lbl);
+
+    let stanzas_list_box = ListBox::builder().build();
+    let stanzas_scrolled = ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .child(&stanzas_list_box)
+        .vexpand(true)
+        .build();
+    left_panel.append(&stanzas_scrolled);
+
+    let order_bar = Box::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(4)
+        .homogeneous(true)
+        .build();
+    let move_up_btn = Button::builder().label("▲ Up").build();
+    let move_down_btn = Button::builder().label("▼ Down").build();
+    let delete_stanza_btn = Button::builder().label("Delete").build();
+
+    order_bar.append(&move_up_btn);
+    order_bar.append(&move_down_btn);
+    order_bar.append(&delete_stanza_btn);
+    left_panel.append(&order_bar);
+
+    // Right Panel
+    let right_panel = Box::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(10)
+        .hexpand(true)
+        .build();
+    body_box.append(&right_panel);
+
+    // Right Left Panel: Editor inputs
+    let editor_inputs = Box::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(8)
+        .width_request(300)
+        .build();
+    right_panel.append(&editor_inputs);
+
+    let name_lbl = Label::builder().label("Stanza Header (e.g. Verse 1, Chorus):").xalign(0.0).build();
+    let name_entry = Entry::builder().build();
+    editor_inputs.append(&name_lbl);
+    editor_inputs.append(&name_entry);
+
+    let lyrics_lbl = Label::builder().label("Lyrics Content:").xalign(0.0).build();
+    let lyrics_text_view = TextView::builder()
+        .vexpand(true)
+        .wrap_mode(gtk::WrapMode::Word)
+        .build();
+    let lyrics_scrolled = ScrolledWindow::builder()
+        .child(&lyrics_text_view)
+        .vexpand(true)
+        .build();
+    editor_inputs.append(&lyrics_lbl);
+    editor_inputs.append(&lyrics_scrolled);
+
+    // Right Right Panel: Style Settings & Canvas Preview
+    let design_panel = Box::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(8)
+        .hexpand(true)
+        .build();
+    right_panel.append(&design_panel);
+
+    let canvas_aspect_frame = gtk::AspectFrame::builder()
+        .ratio(16.0 / 9.0)
+        .obey_child(false)
+        .xalign(0.5)
+        .yalign(0.5)
+        .build();
+    let canvas_drawing_area = gtk::DrawingArea::builder()
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+    canvas_drawing_area.add_css_class("preview-slide-card");
+    canvas_aspect_frame.set_child(Some(&canvas_drawing_area));
+    design_panel.append(&canvas_aspect_frame);
+
+    let controls_box = Box::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(6)
+        .build();
+    design_panel.append(&controls_box);
+
+    let bg_lbl = Label::builder().label("Background Type:").xalign(0.0).build();
+    let bg_dropdown = DropDown::from_strings(&["Transparent", "Lower Transparent", "Custom Image"]);
+    controls_box.append(&bg_lbl);
+    controls_box.append(&bg_dropdown);
+
+    let bg_browse_row = Box::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(6)
+        .build();
+    let bg_path_entry = Entry::builder()
+        .placeholder_text("Image path...")
+        .hexpand(true)
+        .editable(false)
+        .build();
+    let bg_browse_btn = Button::builder().label("Browse...").build();
+    bg_browse_row.append(&bg_path_entry);
+    bg_browse_row.append(&bg_browse_btn);
+    controls_box.append(&bg_browse_row);
+
+    let font_size_lbl = Label::builder().label("Font Size:").xalign(0.0).build();
+    let font_size_scale = Scale::with_range(Orientation::Horizontal, 12.0, 120.0, 1.0);
+    font_size_scale.set_value(40.0);
+    controls_box.append(&font_size_lbl);
+    controls_box.append(&font_size_scale);
+
+    let text_scale_lbl = Label::builder().label("Text Scale:").xalign(0.0).build();
+    let text_scale_scale = Scale::with_range(Orientation::Horizontal, 0.5, 2.0, 0.05);
+    text_scale_scale.set_value(1.0);
+    controls_box.append(&text_scale_lbl);
+    controls_box.append(&text_scale_scale);
+
+    let align_lbl = Label::builder().label("Text Alignment:").xalign(0.0).build();
+    let align_dropdown = DropDown::from_strings(&["Center", "Left", "Right"]);
+    controls_box.append(&align_lbl);
+    controls_box.append(&align_dropdown);
+
+    let shadow_checkbox = CheckButton::builder().label("Text Drop Shadow").build();
+    controls_box.append(&shadow_checkbox);
+
+    // Canvas drawing
+    let song_state_draw = song_state.clone();
+    let active_stanza_idx_draw = active_stanza_idx.clone();
+    canvas_drawing_area.set_draw_func(move |_, cr, width, height| {
+        let song = song_state_draw.borrow();
+        let idx = *active_stanza_idx_draw.borrow();
+        if let Some(stanza) = song.stanzas.get(idx) {
+            if stanza.bg_type == "image" {
+                if let Some(ref path_str) = stanza.bg_path {
+                    let path = std::path::Path::new(path_str);
+                    if path.exists() && path.is_file() {
+                        if let Ok(pixbuf) = gtk::gdk_pixbuf::Pixbuf::from_file(path_str) {
+                            if let Some(scaled) = pixbuf.scale_simple(
+                                width as i32,
+                                height as i32,
+                                gtk::gdk_pixbuf::InterpType::Bilinear,
+                            ) {
+                                cr.set_source_pixbuf(&scaled, 0.0, 0.0);
+                                let _ = cr.paint();
+                            }
+                        }
+                    }
+                }
+            } else if stanza.bg_type == "lower_transparent" {
+                cr.set_source_rgb(0.1, 0.12, 0.15);
+                let _ = cr.paint();
+                
+                cr.set_source_rgba(0.0, 0.0, 0.0, 0.6);
+                let rect_height = height as f64 * 0.35;
+                let rect_y = height as f64 - rect_height;
+                cr.rectangle(0.0, rect_y, width as f64, rect_height);
+                let _ = cr.fill();
+            } else {
+                cr.set_source_rgb(0.1, 0.12, 0.15);
+                let _ = cr.paint();
+            }
+
+            draw_song_text(
+                cr,
+                width as f64,
+                height as f64,
+                &stanza.lyrics,
+                stanza.font_size,
+                stanza.scale,
+                &stanza.align,
+                stanza.shadow,
+                &stanza.bg_type,
+                1.0,
+            );
+        }
+    });
+
+    // Helper to push history
+    let push_history = {
+        let song_state = song_state.clone();
+        let undo_stack = undo_stack.clone();
+        let redo_stack = redo_stack.clone();
+        let undo_btn = undo_btn.clone();
+        let redo_btn = redo_btn.clone();
+        move || {
+            let mut undo = undo_stack.borrow_mut();
+            undo.push(song_state.borrow().clone());
+            if undo.len() > 50 {
+                undo.remove(0);
+            }
+            undo_btn.set_sensitive(true);
+            redo_stack.borrow_mut().clear();
+            redo_btn.set_sensitive(false);
+        }
+    };
+
+    // Update inputs from model
+    let update_inputs = {
+        let song_state = song_state.clone();
+        let active_stanza_idx = active_stanza_idx.clone();
+        let name_entry = name_entry.clone();
+        let lyrics_text_view = lyrics_text_view.clone();
+        let bg_dropdown = bg_dropdown.clone();
+        let bg_path_entry = bg_path_entry.clone();
+        let bg_browse_row = bg_browse_row.clone();
+        let font_size_scale = font_size_scale.clone();
+        let text_scale_scale = text_scale_scale.clone();
+        let align_dropdown = align_dropdown.clone();
+        let shadow_checkbox = shadow_checkbox.clone();
+        let is_updating_controls = is_updating_controls.clone();
+
+        move || {
+            *is_updating_controls.borrow_mut() = true;
+
+            let song = song_state.borrow();
+            let idx = *active_stanza_idx.borrow();
+            if let Some(stanza) = song.stanzas.get(idx) {
+                name_entry.set_text(&stanza.name);
+                lyrics_text_view.buffer().set_text(&stanza.lyrics);
+
+                let bg_idx = match stanza.bg_type.as_str() {
+                    "transparent" => 0,
+                    "lower_transparent" => 1,
+                    "image" => 2,
+                    _ => 0,
+                };
+                bg_dropdown.set_selected(bg_idx);
+                bg_path_entry.set_text(stanza.bg_path.as_deref().unwrap_or(""));
+                bg_browse_row.set_sensitive(bg_idx == 2);
+
+                font_size_scale.set_value(stanza.font_size);
+                text_scale_scale.set_value(stanza.scale);
+
+                let align_idx = match stanza.align.as_str() {
+                    "center" => 0,
+                    "left" => 1,
+                    "right" => 2,
+                    _ => 0,
+                };
+                align_dropdown.set_selected(align_idx);
+                shadow_checkbox.set_active(stanza.shadow);
+            }
+
+            *is_updating_controls.borrow_mut() = false;
+        }
+    };
+
+    // Populate stanzas ListBox
+    let populate_stanzas_list_rc = Rc::new(RefCell::new(None::<Rc<dyn Fn(usize)>>));
+    let populate_stanzas_list = {
+        let song_state = song_state.clone();
+        let stanzas_list_box = stanzas_list_box.clone();
+        let active_stanza_idx = active_stanza_idx.clone();
+        let canvas_drawing_area = canvas_drawing_area.clone();
+        let update_inputs = update_inputs.clone();
+        move |selected_idx: usize| {
+            while let Some(child) = stanzas_list_box.first_child() {
+                stanzas_list_box.remove(&child);
+            }
+
+            let song = song_state.borrow();
+            for (idx, stanza) in song.stanzas.iter().enumerate() {
+                let row_lbl = Label::builder()
+                    .label(&format!("{}: {}", stanza.name, stanza.lyrics.chars().take(20).collect::<String>()))
+                    .xalign(0.0)
+                    .build();
+                row_lbl.add_css_class("sidebar-row");
+                
+                let row = ListBoxRow::builder().child(&row_lbl).build();
+                stanzas_list_box.append(&row);
+
+                if idx == selected_idx {
+                    stanzas_list_box.select_row(Some(&row));
+                }
+            }
+            *active_stanza_idx.borrow_mut() = selected_idx;
+            update_inputs();
+            canvas_drawing_area.queue_draw();
+        }
+    };
+    let populate_stanzas_list_shared = Rc::new(populate_stanzas_list);
+    *populate_stanzas_list_rc.borrow_mut() = Some(populate_stanzas_list_shared.clone());
+
+    // Selection inside stanzas ListBox
+    stanzas_list_box.connect_row_selected({
+        let active_stanza_idx = active_stanza_idx.clone();
+        let update_inputs = update_inputs.clone();
+        let canvas_drawing_area = canvas_drawing_area.clone();
+        move |_, row| {
+            if let Some(row) = row {
+                *active_stanza_idx.borrow_mut() = row.index() as usize;
+                update_inputs();
+                canvas_drawing_area.queue_draw();
+            }
+        }
+    });
+
+    // Wire controls
+    title_entry.connect_changed({
+        let song_state = song_state.clone();
+        move |entry| {
+            song_state.borrow_mut().title = entry.text().to_string();
+        }
+    });
+
+    name_entry.connect_changed({
+        let song_state = song_state.clone();
+        let active_stanza_idx = active_stanza_idx.clone();
+        let is_updating_controls = is_updating_controls.clone();
+        let stanzas_list_box = stanzas_list_box.clone();
+        move |entry| {
+            if *is_updating_controls.borrow() { return; }
+            let mut song = song_state.borrow_mut();
+            let idx = *active_stanza_idx.borrow();
+            if let Some(stanza) = song.stanzas.get_mut(idx) {
+                stanza.name = entry.text().to_string();
+            }
+            drop(song);
+            if let Some(row) = stanzas_list_box.row_at_index(idx as i32) {
+                if let Some(label) = row.child().and_then(|c| c.downcast::<Label>().ok()) {
+                    let song = song_state.borrow();
+                    let stanza = &song.stanzas[idx];
+                    label.set_text(&format!("{}: {}", stanza.name, stanza.lyrics.chars().take(20).collect::<String>()));
+                }
+            }
+        }
+    });
+
+    lyrics_text_view.buffer().connect_changed({
+        let song_state = song_state.clone();
+        let active_stanza_idx = active_stanza_idx.clone();
+        let is_updating_controls = is_updating_controls.clone();
+        let canvas_drawing_area = canvas_drawing_area.clone();
+        let stanzas_list_box = stanzas_list_box.clone();
+        move |buf| {
+            if *is_updating_controls.borrow() { return; }
+            let text = buf.text(&buf.start_iter(), &buf.end_iter(), false).to_string();
+            let mut song = song_state.borrow_mut();
+            let idx = *active_stanza_idx.borrow();
+            if let Some(stanza) = song.stanzas.get_mut(idx) {
+                stanza.lyrics = text;
+            }
+            drop(song);
+            canvas_drawing_area.queue_draw();
+            if let Some(row) = stanzas_list_box.row_at_index(idx as i32) {
+                if let Some(label) = row.child().and_then(|c| c.downcast::<Label>().ok()) {
+                    let song = song_state.borrow();
+                    let stanza = &song.stanzas[idx];
+                    label.set_text(&format!("{}: {}", stanza.name, stanza.lyrics.chars().take(20).collect::<String>()));
+                }
+            }
+        }
+    });
+
+    bg_dropdown.connect_selected_notify({
+        let song_state = song_state.clone();
+        let active_stanza_idx = active_stanza_idx.clone();
+        let is_updating_controls = is_updating_controls.clone();
+        let canvas_drawing_area = canvas_drawing_area.clone();
+        let bg_path_row = bg_browse_row.clone();
+        let push_history = push_history.clone();
+        move |dd| {
+            if *is_updating_controls.borrow() { return; }
+            push_history();
+            let sel = dd.selected();
+            let bg_type = match sel {
+                0 => "transparent",
+                1 => "lower_transparent",
+                2 => "image",
+                _ => "transparent",
+            };
+            bg_path_row.set_sensitive(sel == 2);
+            let mut song = song_state.borrow_mut();
+            let idx = *active_stanza_idx.borrow();
+            if let Some(stanza) = song.stanzas.get_mut(idx) {
+                stanza.bg_type = bg_type.to_string();
+            }
+            drop(song);
+            canvas_drawing_area.queue_draw();
+        }
+    });
+
+    bg_browse_btn.connect_clicked({
+        let bg_path_entry = bg_path_entry.clone();
+        let song_state = song_state.clone();
+        let active_stanza_idx = active_stanza_idx.clone();
+        let canvas_drawing_area = canvas_drawing_area.clone();
+        let push_history = push_history.clone();
+        let editor_win = editor_win.clone();
+        move |_| {
+            let dialog = gtk::FileChooserDialog::builder()
+                .title("Choose Background Image")
+                .action(gtk::FileChooserAction::Open)
+                .modal(true)
+                .transient_for(&editor_win)
+                .build();
+            dialog.add_button("Cancel", gtk::ResponseType::Cancel);
+            dialog.add_button("Open", gtk::ResponseType::Ok);
+
+            let bg_path_entry_c = bg_path_entry.clone();
+            let song_state_c = song_state.clone();
+            let active_idx_c = active_stanza_idx.clone();
+            let canvas_drawing_area_c = canvas_drawing_area.clone();
+            let push_history_c = push_history.clone();
+
+            dialog.connect_response(move |dialog, response| {
+                if response == gtk::ResponseType::Ok {
+                    if let Some(file) = dialog.file() {
+                        if let Some(path) = file.path() {
+                            let path_str = path.to_string_lossy().to_string();
+                            push_history_c();
+                            bg_path_entry_c.set_text(&path_str);
+                            let mut song = song_state_c.borrow_mut();
+                            let idx = *active_idx_c.borrow();
+                            if let Some(stanza) = song_state_c.borrow().stanzas.get(idx) {
+                                // Double check inside boundary
+                                let _ = stanza;
+                            }
+                            if let Some(stanza) = song.stanzas.get_mut(idx) {
+                                stanza.bg_path = Some(path_str);
+                            }
+                            drop(song);
+                            canvas_drawing_area_c.queue_draw();
+                        }
+                    }
+                }
+                dialog.destroy();
+            });
+            dialog.present();
+        }
+    });
+
+    font_size_scale.connect_value_changed({
+        let song_state = song_state.clone();
+        let active_stanza_idx = active_stanza_idx.clone();
+        let is_updating_controls = is_updating_controls.clone();
+        let canvas_drawing_area = canvas_drawing_area.clone();
+        move |scale| {
+            if *is_updating_controls.borrow() { return; }
+            let mut song = song_state.borrow_mut();
+            let idx = *active_stanza_idx.borrow();
+            if let Some(stanza) = song.stanzas.get_mut(idx) {
+                stanza.font_size = scale.value();
+            }
+            drop(song);
+            canvas_drawing_area.queue_draw();
+        }
+    });
+
+    text_scale_scale.connect_value_changed({
+        let song_state = song_state.clone();
+        let active_stanza_idx = active_stanza_idx.clone();
+        let is_updating_controls = is_updating_controls.clone();
+        let canvas_drawing_area = canvas_drawing_area.clone();
+        move |scale| {
+            if *is_updating_controls.borrow() { return; }
+            let mut song = song_state.borrow_mut();
+            let idx = *active_stanza_idx.borrow();
+            if let Some(stanza) = song.stanzas.get_mut(idx) {
+                stanza.scale = scale.value();
+            }
+            drop(song);
+            canvas_drawing_area.queue_draw();
+        }
+    });
+
+    align_dropdown.connect_selected_notify({
+        let song_state = song_state.clone();
+        let active_stanza_idx = active_stanza_idx.clone();
+        let is_updating_controls = is_updating_controls.clone();
+        let canvas_drawing_area = canvas_drawing_area.clone();
+        let push_history = push_history.clone();
+        move |dd| {
+            if *is_updating_controls.borrow() { return; }
+            push_history();
+            let sel = dd.selected();
+            let align = match sel {
+                0 => "center",
+                1 => "left",
+                2 => "right",
+                _ => "center",
+            };
+            let mut song = song_state.borrow_mut();
+            let idx = *active_stanza_idx.borrow();
+            if let Some(stanza) = song.stanzas.get_mut(idx) {
+                stanza.align = align.to_string();
+            }
+            drop(song);
+            canvas_drawing_area.queue_draw();
+        }
+    });
+
+    shadow_checkbox.connect_toggled({
+        let song_state = song_state.clone();
+        let active_stanza_idx = active_stanza_idx.clone();
+        let is_updating_controls = is_updating_controls.clone();
+        let canvas_drawing_area = canvas_drawing_area.clone();
+        let push_history = push_history.clone();
+        move |cb| {
+            if *is_updating_controls.borrow() { return; }
+            push_history();
+            let mut song = song_state.borrow_mut();
+            let idx = *active_stanza_idx.borrow();
+            if let Some(stanza) = song.stanzas.get_mut(idx) {
+                stanza.shadow = cb.is_active();
+            }
+            drop(song);
+            canvas_drawing_area.queue_draw();
+        }
+    });
+
+    // Undo / Redo Clicked
+    let undo_btn_c = undo_btn.clone();
+    let redo_btn_c = redo_btn.clone();
+    let undo_stack_c = undo_stack.clone();
+    let redo_stack_c = redo_stack.clone();
+    let song_state_c = song_state.clone();
+    let update_inputs_c = update_inputs.clone();
+    let populate_stanzas_list_rc_c = populate_stanzas_list_rc.clone();
+    let active_stanza_idx_c = active_stanza_idx.clone();
+
+    undo_btn.connect_clicked(move |_| {
+        let mut undo = undo_stack_c.borrow_mut();
+        if let Some(prev_state) = undo.pop() {
+            redo_stack_c.borrow_mut().push(song_state_c.borrow().clone());
+            *song_state_c.borrow_mut() = prev_state;
+            
+            let idx = *active_stanza_idx_c.borrow();
+            let active_idx = if idx >= song_state_c.borrow().stanzas.len() {
+                song_state_c.borrow().stanzas.len().saturating_sub(1)
+            } else {
+                idx
+            };
+
+            undo_btn_c.set_sensitive(!undo.is_empty());
+            redo_btn_c.set_sensitive(true);
+
+            drop(undo);
+            let pop_fn = populate_stanzas_list_rc_c.borrow().as_ref().unwrap().clone();
+            pop_fn(active_idx);
+            update_inputs_c();
+        }
+    });
+
+    let undo_btn_c2 = undo_btn.clone();
+    let redo_btn_c2 = redo_btn.clone();
+    let undo_stack_c2 = undo_stack.clone();
+    let redo_stack_c2 = redo_stack.clone();
+    let song_state_c2 = song_state.clone();
+    let update_inputs_c2 = update_inputs.clone();
+    let populate_stanzas_list_rc_c2 = populate_stanzas_list_rc.clone();
+    let active_stanza_idx_c2 = active_stanza_idx.clone();
+
+    redo_btn.connect_clicked(move |_| {
+        let mut redo = redo_stack_c2.borrow_mut();
+        if let Some(next_state) = redo.pop() {
+            undo_stack_c2.borrow_mut().push(song_state_c2.borrow().clone());
+            *song_state_c2.borrow_mut() = next_state;
+
+            let idx = *active_stanza_idx_c2.borrow();
+            let active_idx = if idx >= song_state_c2.borrow().stanzas.len() {
+                song_state_c2.borrow().stanzas.len().saturating_sub(1)
+            } else {
+                idx
+            };
+
+            undo_btn_c2.set_sensitive(true);
+            redo_btn_c2.set_sensitive(!redo.is_empty());
+
+            drop(redo);
+            let pop_fn = populate_stanzas_list_rc_c2.borrow().as_ref().unwrap().clone();
+            pop_fn(active_idx);
+            update_inputs_c2();
+        }
+    });
+
+    // Add Stanza Clicked
+    let song_state_c = song_state.clone();
+    let push_history_c = push_history.clone();
+    let populate_stanzas_list_rc_c = populate_stanzas_list_rc.clone();
+    add_stanza_btn.connect_clicked(move |_| {
+        push_history_c();
+        let mut song = song_state_c.borrow_mut();
+        let new_idx = song.stanzas.len();
+        song.stanzas.push(SongStanza {
+            name: format!("Verse {}", new_idx + 1),
+            lyrics: "New stanza text".to_string(),
+            bg_type: "transparent".to_string(),
+            bg_path: None,
+            font_size: 40.0,
+            scale: 1.0,
+            align: "center".to_string(),
+            shadow: false,
+        });
+        drop(song);
+        let pop_fn = populate_stanzas_list_rc_c.borrow().as_ref().unwrap().clone();
+        pop_fn(new_idx);
+    });
+
+    // Move Up Clicked
+    let song_state_c = song_state.clone();
+    let active_stanza_idx_c = active_stanza_idx.clone();
+    let push_history_c = push_history.clone();
+    let populate_stanzas_list_rc_c = populate_stanzas_list_rc.clone();
+    move_up_btn.connect_clicked(move |_| {
+        let idx = *active_stanza_idx_c.borrow();
+        if idx > 0 {
+            push_history_c();
+            let mut song = song_state_c.borrow_mut();
+            song.stanzas.swap(idx, idx - 1);
+            drop(song);
+            let pop_fn = populate_stanzas_list_rc_c.borrow().as_ref().unwrap().clone();
+            pop_fn(idx - 1);
+        }
+    });
+
+    // Move Down Clicked
+    let song_state_c = song_state.clone();
+    let active_stanza_idx_c = active_stanza_idx.clone();
+    let push_history_c = push_history.clone();
+    let populate_stanzas_list_rc_c = populate_stanzas_list_rc.clone();
+    move_down_btn.connect_clicked(move |_| {
+        let idx = *active_stanza_idx_c.borrow();
+        let len = song_state_c.borrow().stanzas.len();
+        if idx < len - 1 {
+            push_history_c();
+            let mut song = song_state_c.borrow_mut();
+            song.stanzas.swap(idx, idx + 1);
+            drop(song);
+            let pop_fn = populate_stanzas_list_rc_c.borrow().as_ref().unwrap().clone();
+            pop_fn(idx + 1);
+        }
+    });
+
+    // Delete Stanza Clicked
+    let song_state_c = song_state.clone();
+    let active_stanza_idx_c = active_stanza_idx.clone();
+    let push_history_c = push_history.clone();
+    let populate_stanzas_list_rc_c = populate_stanzas_list_rc.clone();
+    let update_inputs_c = update_inputs.clone();
+    delete_stanza_btn.connect_clicked(move |_| {
+        let idx = *active_stanza_idx_c.borrow();
+        let len = song_state_c.borrow().stanzas.len();
+        if len > 1 {
+            push_history_c();
+            let mut song = song_state_c.borrow_mut();
+            song.stanzas.remove(idx);
+            drop(song);
+            let next_idx = if idx >= len - 1 { len - 2 } else { idx };
+            let pop_fn = populate_stanzas_list_rc_c.borrow().as_ref().unwrap().clone();
+            pop_fn(next_idx);
+            update_inputs_c();
+        }
+    });
+
+    // Save Song Clicked
+    let state_save = state.clone();
+    let song_state_save = song_state.clone();
+    let editor_win_save = editor_win.clone();
+    save_btn.connect_clicked(move |_| {
+        let title = title_entry.text().to_string().trim().to_string();
+        if title.is_empty() {
+            let err_dialog = gtk::MessageDialog::builder()
+                .message_type(gtk::MessageType::Error)
+                .buttons(gtk::ButtonsType::Ok)
+                .text("Song Title Required")
+                .secondary_text("Please enter a name for the song before saving.")
+                .modal(true)
+                .transient_for(&editor_win_save)
+                .build();
+            err_dialog.connect_response(|d, _| d.destroy());
+            err_dialog.present();
+            return;
+        }
+
+        let mut song = song_state_save.borrow().clone();
+        song.title = title;
+        
+        crate::db::save_song(&song);
+
+        // Reload songs list in AppState
+        let mut s = state_save.borrow_mut();
+        s.songs = crate::db::get_songs();
+        s.selected_song_index = None;
+        s.selected_stanza_index = None;
+        drop(s);
+
+        populate_songs_sidebar();
+        editor_win_save.close();
+    });
+
+    // Load first stanza by default
+    populate_stanzas_list_shared(0);
+    editor_win.present();
 }

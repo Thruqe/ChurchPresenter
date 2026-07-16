@@ -6,9 +6,22 @@ pub struct Verse {
 }
 
 #[derive(Clone, Debug)]
+pub struct SongStanza {
+    pub name: String,
+    pub lyrics: String,
+    pub bg_type: String,      // "transparent", "lower_transparent", "image"
+    pub bg_path: Option<String>,
+    pub font_size: f64,
+    pub scale: f64,
+    pub align: String,        // "left", "right", "center"
+    pub shadow: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct Song {
-    pub title: &'static str,
-    pub stanzas: Vec<&'static str>,
+    pub id: Option<i64>,
+    pub title: String,
+    pub stanzas: Vec<SongStanza>,
 }
 
 pub struct AppState {
@@ -38,6 +51,8 @@ pub struct AppState {
     pub logo_mode: bool,
     pub go_live_active: bool,
     pub logo_image_path: Option<String>,
+    pub live_song_stanzas: Option<Vec<SongStanza>>,
+    pub preview_song_stanzas: Option<Vec<SongStanza>>,
 
     // Custom media themes
     pub custom_themes: Vec<(String, String)>, // (name, path)

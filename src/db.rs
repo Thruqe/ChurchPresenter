@@ -1,8 +1,130 @@
 use rusqlite::{Connection, params};
-use crate::models::{Verse, Song};
+use crate::models::{Verse, Song, SongStanza};
+
+pub fn init_songs_tables() {
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
+        let _ = conn.execute(
+            "CREATE TABLE IF NOT EXISTS songs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL
+            )",
+            [],
+        );
+        let _ = conn.execute(
+            "CREATE TABLE IF NOT EXISTS song_stanzas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                song_id INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                lyrics TEXT NOT NULL,
+                bg_type TEXT NOT NULL,
+                bg_path TEXT,
+                font_size REAL NOT NULL DEFAULT 40.0,
+                scale REAL NOT NULL DEFAULT 1.0,
+                align TEXT NOT NULL DEFAULT 'center',
+                shadow INTEGER NOT NULL DEFAULT 0,
+                order_index INTEGER NOT NULL
+            )",
+            [],
+        );
+    }
+}
 
 pub fn get_songs() -> Vec<Song> {
-    vec![]
+    let mut songs = Vec::new();
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
+        if let Ok(mut stmt) = conn.prepare("SELECT id, title FROM songs ORDER BY id") {
+            if let Ok(rows) = stmt.query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            }) {
+                for r in rows {
+                    if let Ok((song_id, title)) = r {
+                        let mut stanzas = Vec::new();
+                        if let Ok(mut s_stmt) = conn.prepare(
+                            "SELECT name, lyrics, bg_type, bg_path, font_size, scale, align, shadow 
+                             FROM song_stanzas WHERE song_id = ? ORDER BY order_index"
+                        ) {
+                            if let Ok(s_rows) = s_stmt.query_map(params![song_id], |s_row| {
+                                Ok(SongStanza {
+                                    name: s_row.get(0)?,
+                                    lyrics: s_row.get(1)?,
+                                    bg_type: s_row.get(2)?,
+                                    bg_path: s_row.get(3)?,
+                                    font_size: s_row.get(4)?,
+                                    scale: s_row.get(5)?,
+                                    align: s_row.get(6)?,
+                                    shadow: s_row.get::<_, i32>(7)? != 0,
+                                })
+                            }) {
+                                for sr in s_rows {
+                                    if let Ok(stanza) = sr {
+                                        stanzas.push(stanza);
+                                    }
+                                }
+                            }
+                        }
+                        songs.push(Song {
+                            id: Some(song_id),
+                            title,
+                            stanzas,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    songs
+}
+
+pub fn save_song(song: &Song) -> i64 {
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
+        if let Some(song_id) = song.id {
+            let _ = conn.execute("UPDATE songs SET title = ? WHERE id = ?", params![song.title, song_id]);
+            let _ = conn.execute("DELETE FROM song_stanzas WHERE song_id = ?", params![song_id]);
+            for (idx, stanza) in song.stanzas.iter().enumerate() {
+                let _ = conn.execute(
+                    "INSERT INTO song_stanzas (song_id, name, lyrics, bg_type, bg_path, font_size, scale, align, shadow, order_index)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    params![
+                        song_id,
+                        stanza.name,
+                        stanza.lyrics,
+                        stanza.bg_type,
+                        stanza.bg_path,
+                        stanza.font_size,
+                        stanza.scale,
+                        stanza.align,
+                        if stanza.shadow { 1 } else { 0 },
+                        idx as i32
+                    ],
+                );
+            }
+            song_id
+        } else {
+            let _ = conn.execute("INSERT INTO songs (title) VALUES (?)", params![song.title]);
+            let song_id = conn.last_insert_rowid();
+            for (idx, stanza) in song.stanzas.iter().enumerate() {
+                let _ = conn.execute(
+                    "INSERT INTO song_stanzas (song_id, name, lyrics, bg_type, bg_path, font_size, scale, align, shadow, order_index)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    params![
+                        song_id,
+                        stanza.name,
+                        stanza.lyrics,
+                        stanza.bg_type,
+                        stanza.bg_path,
+                        stanza.font_size,
+                        stanza.scale,
+                        stanza.align,
+                        if stanza.shadow { 1 } else { 0 },
+                        idx as i32
+                    ],
+                );
+            }
+            song_id
+        }
+    } else {
+        0
+    }
 }
 
 pub fn parse_reference(query: &str) -> (String, Option<i32>, Option<i32>) {
@@ -315,5 +437,11 @@ pub fn get_config_value(key: &str) -> Option<String> {
         }
     }
     None
+}
+
+pub fn delete_song(song_id: i64) {
+    if let Ok(conn) = Connection::open(get_data_db_path()) {
+        let _ = conn.execute("DELETE FROM songs WHERE id = ?", params![song_id]);
+    }
 }
 
