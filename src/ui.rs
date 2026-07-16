@@ -106,7 +106,7 @@ fn draw_single_slide_text(
             }
 
             cr.set_font_size(height * 0.037);
-            let logo_lbl = "EasyWorship - Standby";
+            let logo_lbl = "ChurchPresenter - Standby";
             if let Ok(ext) = cr.text_extents(logo_lbl) {
                 cr.move_to(
                     (width - ext.width()) / 2.0,
@@ -607,7 +607,7 @@ pub fn build_ui(app: &Application) {
         custom_background_path,
         preview_header: "Genesis 1:1 (KJV)".to_string(),
         preview_body: "In the beginning God created the heaven and the earth.".to_string(),
-        live_current_header: "EasyWorship".to_string(),
+        live_current_header: "ChurchPresenter".to_string(),
         live_current_body: "[Standby - Projection Off]".to_string(),
         live_prev_header: String::new(),
         live_prev_body: String::new(),
@@ -695,7 +695,7 @@ pub fn build_ui(app: &Application) {
                     "About" => {
                         if let Some(window) = app_clone.active_window() {
                             let about_win = gtk::Window::builder()
-                                .title("About EasyWorship")
+                                .title("About ChurchPresenter")
                                 .modal(true)
                                 .transient_for(&window)
                                 .default_width(460)
@@ -713,7 +713,7 @@ pub fn build_ui(app: &Application) {
                                 .build();
 
                             let title_lbl = Label::builder()
-                                .label("EasyWorship - GTK4 Edition")
+                                .label("ChurchPresenter - GTK4 Edition")
                                 .build();
                             title_lbl.add_css_class("about-title");
 
@@ -1086,7 +1086,7 @@ pub fn build_ui(app: &Application) {
                 active_body = body.clone();
             }
         } else if s.live_slides.is_empty() {
-            active_header = "EasyWorship".to_string();
+            active_header = "ChurchPresenter".to_string();
             active_body = "[Standby - Projection Off]".to_string();
         }
 
@@ -1243,7 +1243,7 @@ pub fn build_ui(app: &Application) {
                     active_body = body.clone();
                 }
             } else if s.live_slides.is_empty() {
-                active_header = "EasyWorship".to_string();
+                active_header = "ChurchPresenter".to_string();
                 active_body = "[Standby - Projection Off]".to_string();
             }
 
@@ -2185,7 +2185,7 @@ pub fn build_ui(app: &Application) {
                         live_text_ref_label.set_text("");
                         live_text_body_label.set_text("");
                     } else if logo_val {
-                        live_text_ref_label.set_text("EasyWorship");
+                        live_text_ref_label.set_text("ChurchPresenter");
                         live_text_body_label.set_text("✝\nStandby Screen");
                     } else if clearout_val {
                         live_text_ref_label.set_text(header);
@@ -2213,7 +2213,7 @@ pub fn build_ui(app: &Application) {
                     active_body = body.clone();
                 }
             } else if live_slides.is_empty() {
-                active_header = "EasyWorship".to_string();
+                active_header = "ChurchPresenter".to_string();
                 active_body = "[Standby - Projection Off]".to_string();
             }
 
@@ -2860,7 +2860,7 @@ pub fn build_ui(app: &Application) {
 
     let window = ApplicationWindow::builder()
         .application(app)
-        .title("EasyWorship - GTK4 Edition")
+        .title("ChurchPresenter - GTK4 Edition")
         .default_width(1280)
         .default_height(1000)
         .build();

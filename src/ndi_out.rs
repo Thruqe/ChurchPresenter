@@ -71,7 +71,7 @@ fn draw_single_slide_text(cr: &Context, width: f64, height: f64, slide: &NdiSlid
             }
 
             cr.set_font_size(height * 0.037);
-            let logo_lbl = "EasyWorship - Standby";
+            let logo_lbl = "ChurchPresenter - Standby";
             if let Ok(ext) = cr.text_extents(logo_lbl) {
                 cr.move_to(
                     (width - ext.width()) / 2.0,
@@ -164,7 +164,7 @@ impl NdiOutput {
 
             // Create Sender
             let sender = match ndi::SendBuilder::new()
-                .ndi_name("EasyWorship Live Output".to_string())
+                .ndi_name("ChurchPresenter Live Output".to_string())
                 .build()
             {
                 Ok(s) => s,
@@ -181,7 +181,7 @@ impl NdiOutput {
             let mut cached_background_path = String::new();
             let mut cached_background_pixbuf: Option<Pixbuf> = None;
 
-            println!("NDI Broadcast active: 'EasyWorship Live Output'");
+            println!("NDI Broadcast active: 'ChurchPresenter Live Output'");
 
             let mut last_slide: Option<NdiSlideData> = None;
             let mut trans_prev_slide: Option<NdiSlideData> = None;
