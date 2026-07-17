@@ -156,7 +156,7 @@ pub fn query_verses_by_mode(
     translation: &str,
     search_by_keyword: bool,
 ) -> Vec<Verse> {
-    let conn_res = Connection::open("KJV.sqlite");
+    let conn_res = Connection::open(get_kjv_db_path());
     if conn_res.is_err() {
         return vec![];
     }
@@ -275,7 +275,7 @@ pub fn load_default_genesis_1(conn: &Connection, translation: &str) -> Vec<Verse
 }
 
 pub fn autocomplete_book_name(text: &str) -> Option<String> {
-    let conn_res = Connection::open("KJV.sqlite");
+    let conn_res = Connection::open(get_kjv_db_path());
     if conn_res.is_err() {
         return None;
     }
@@ -294,7 +294,7 @@ pub fn autocomplete_book_name(text: &str) -> Option<String> {
 }
 
 pub fn get_all_books() -> Vec<String> {
-    let conn_res = Connection::open("KJV.sqlite");
+    let conn_res = Connection::open(get_kjv_db_path());
     if conn_res.is_err() {
         return vec![];
     }
@@ -307,12 +307,35 @@ pub fn get_all_books() -> Vec<String> {
     vec![]
 }
 
-pub fn get_data_db_path() -> String {
-    let path = "/home/thruqe/Documents/Church-Presenter/saves/data.sqlite";
-    if let Some(parent) = std::path::Path::new(path).parent() {
-        let _ = std::fs::create_dir_all(parent);
+pub fn get_saves_directory() -> std::path::PathBuf {
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(parent) = exe_path.parent() {
+            let saves_dir = parent.join("saves");
+            if std::fs::create_dir_all(&saves_dir).is_ok() {
+                return saves_dir;
+            }
+        }
     }
-    path.to_string()
+    let fallback = std::path::PathBuf::from("saves");
+    let _ = std::fs::create_dir_all(&fallback);
+    fallback
+}
+
+pub fn get_data_db_path() -> String {
+    let path = get_saves_directory().join("data.sqlite");
+    path.to_string_lossy().to_string()
+}
+
+pub fn get_kjv_db_path() -> String {
+    let path = get_saves_directory().join("KJV.sqlite");
+    if !path.exists() {
+        println!("INFO: KJV.sqlite not found. Extracting bundled database...");
+        let bytes = include_bytes!("../KJV.sqlite");
+        if let Err(e) = std::fs::write(&path, bytes) {
+            eprintln!("Error writing KJV.sqlite: {:?}", e);
+        }
+    }
+    path.to_string_lossy().to_string()
 }
 
 pub fn init_media_table() {

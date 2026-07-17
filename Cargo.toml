@@ -10,3 +10,10 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 ndi = "0.1.2"
 log = "0.4"
 simplelog = "0.12"
+
+[profile.release]
+opt-level = "z"        # Optimize aggressively for binary size
+lto = true             # Enable full Link-Time Optimization across all crates
+codegen-units = 1      # Compile with a single codegen unit to enable maximum optimizations
+panic = "abort"        # Abort on panic to remove stack unwinding code
+strip = true           # Strip all debug symbols and symbols table

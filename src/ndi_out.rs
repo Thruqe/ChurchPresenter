@@ -23,6 +23,8 @@ pub struct NdiSlideData {
     pub scale: f64,
     pub align: String,
     pub shadow: bool,
+    pub default_song_bg_type: String,
+    pub default_song_bg_val: Option<String>,
 }
 
 #[derive(Clone)]
@@ -32,34 +34,99 @@ pub struct NdiOutput {
 
 fn draw_background(
     cr: &Context,
-    _width: f64,
-    _height: f64,
+    width: f64,
+    height: f64,
     theme: &str,
     blackout: bool,
     cached_background_pixbuf: &Option<Pixbuf>,
     bg_type: &str,
+    bg_path: Option<&str>,
+    default_song_bg_type: &str,
+    default_song_bg_val: Option<&str>,
 ) {
     if blackout {
         cr.set_source_rgb(0.0, 0.0, 0.0);
         let _ = cr.paint();
-    } else if bg_type == "transparent" || bg_type == "lower_transparent" {
-        // Fully transparent overlay
-        cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
-        let _ = cr.paint();
     } else {
-        if let Some(scaled) = cached_background_pixbuf {
-            cr.set_source_pixbuf(scaled, 0.0, 0.0);
-            let _ = cr.paint();
+        let is_song = !bg_type.is_empty();
+        let (actual_bg_type, actual_bg_path) = if is_song && bg_type == "transparent" {
+            (default_song_bg_type, default_song_bg_val)
         } else {
-            match theme {
-                "classic-red" => cr.set_source_rgb(0.5, 0.0, 0.0),
-                "royal-blue" => cr.set_source_rgb(0.0, 0.1, 0.4),
-                "forest-green" => cr.set_source_rgb(0.0, 0.3, 0.1),
-                "dark-slate" => cr.set_source_rgb(0.1, 0.12, 0.15),
-                "black" => cr.set_source_rgb(0.0, 0.0, 0.0),
-                _ => cr.set_source_rgb(0.0, 0.0, 0.0),
+            (bg_type, bg_path)
+        };
+
+        if !is_song {
+            // Scripture or standby slide -> Draw standard theme background
+            if let Some(scaled) = cached_background_pixbuf {
+                cr.set_source_pixbuf(scaled, 0.0, 0.0);
+                let _ = cr.paint();
+            } else {
+                match theme {
+                    "classic-red" | "theme-classic-red" => cr.set_source_rgb(0.5, 0.0, 0.0),
+                    "royal-blue" | "theme-royal-blue" => cr.set_source_rgb(0.0, 0.1, 0.4),
+                    "forest-green" | "theme-forest-green" => cr.set_source_rgb(0.0, 0.3, 0.1),
+                    "dark-slate" | "theme-dark-slate" => cr.set_source_rgb(0.1, 0.12, 0.15),
+                    "black" | "theme-black" => cr.set_source_rgb(0.0, 0.0, 0.0),
+                    _ => {
+                        let path = std::path::Path::new(theme);
+                        if path.exists() && path.is_file() {
+                            if let Ok(pixbuf) = Pixbuf::from_file(theme) {
+                                if let Some(scaled) = pixbuf.scale_simple(
+                                    width as i32,
+                                    height as i32,
+                                    gtk::gdk_pixbuf::InterpType::Bilinear,
+                                ) {
+                                    cr.set_source_pixbuf(&scaled, 0.0, 0.0);
+                                    let _ = cr.paint();
+                                    return;
+                                }
+                            }
+                        }
+                        cr.set_source_rgb(0.0, 0.0, 0.0);
+                    }
+                }
+                let _ = cr.paint();
             }
-            let _ = cr.paint();
+        } else {
+            // Song stanza card -> Render background according to resolved types
+            if actual_bg_type == "image" {
+                if let Some(scaled) = cached_background_pixbuf {
+                    cr.set_source_pixbuf(scaled, 0.0, 0.0);
+                    let _ = cr.paint();
+                } else {
+                    cr.set_source_rgb(0.0, 0.0, 0.0);
+                    let _ = cr.paint();
+                }
+            } else if actual_bg_type == "color" || actual_bg_type == "theme" {
+                let color_theme = actual_bg_path.unwrap_or("dark-slate");
+                match color_theme {
+                    "classic-red" | "theme-classic-red" => cr.set_source_rgb(0.5, 0.0, 0.0),
+                    "royal-blue" | "theme-royal-blue" => cr.set_source_rgb(0.0, 0.1, 0.4),
+                    "forest-green" | "theme-forest-green" => cr.set_source_rgb(0.0, 0.3, 0.1),
+                    "dark-slate" | "theme-dark-slate" => cr.set_source_rgb(0.1, 0.12, 0.15),
+                    "black" | "theme-black" => cr.set_source_rgb(0.0, 0.0, 0.0),
+                    _ => {
+                        if let Some(scaled) = cached_background_pixbuf {
+                            cr.set_source_pixbuf(scaled, 0.0, 0.0);
+                        } else {
+                            cr.set_source_rgb(0.1, 0.12, 0.15);
+                        }
+                    }
+                }
+                let _ = cr.paint();
+            } else if actual_bg_type == "lower_transparent" {
+                cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
+                let _ = cr.paint();
+
+                cr.set_source_rgba(0.0, 0.0, 0.0, 0.6);
+                let rect_height = height * 0.35;
+                let rect_y = height - rect_height;
+                cr.rectangle(0.0, rect_y, width, rect_height);
+                let _ = cr.fill();
+            } else {
+                cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
+                let _ = cr.paint();
+            }
         }
     }
 }
@@ -337,6 +404,8 @@ impl NdiOutput {
                                 || last.scale != slide.scale
                                 || last.align != slide.align
                                 || last.shadow != slide.shadow
+                                || last.default_song_bg_type != slide.default_song_bg_type
+                                || last.default_song_bg_val != slide.default_song_bg_val
                         }
                     };
 
@@ -365,17 +434,23 @@ impl NdiOutput {
                         last_sent_time.elapsed() >= Duration::from_millis(1000);
 
                     if slide_changed || is_animating || time_for_keep_alive {
-                        // Ensure active background is loaded/scaled if needed
+                        // Apply default song background if stanza background is transparent
+                        let (res_bg_type, res_bg_path) = if slide.bg_type == "transparent" {
+                            (slide.default_song_bg_type.as_str(), slide.default_song_bg_val.as_deref())
+                        } else {
+                            (slide.bg_type.as_str(), slide.bg_path.as_deref())
+                        };
+
                         let active_bg_path = if slide.logo_mode {
                             slide.logo_image_path.as_deref().unwrap_or("")
-                        } else if !slide.bg_type.is_empty() {
-                            if slide.bg_type == "image" {
-                                slide.bg_path.as_deref().unwrap_or("")
-                            } else {
-                                ""
-                            }
-                        } else {
+                        } else if res_bg_type == "image" {
+                            res_bg_path.unwrap_or("")
+                        } else if (res_bg_type == "color" || res_bg_type == "theme") && res_bg_path.map(|p| std::path::Path::new(p).exists() && std::path::Path::new(p).is_file()).unwrap_or(false) {
+                            res_bg_path.unwrap_or("")
+                        } else if res_bg_type.is_empty() && !slide.theme.is_empty() {
                             &slide.theme
+                        } else {
+                            ""
                         };
 
                         let path = std::path::Path::new(active_bg_path);
@@ -418,6 +493,9 @@ impl NdiOutput {
                             slide.blackout,
                             &cached_background_pixbuf,
                             &slide.bg_type,
+                            slide.bg_path.as_deref(),
+                            &slide.default_song_bg_type,
+                            slide.default_song_bg_val.as_deref(),
                         );
 
                         // 2. Draw text
@@ -470,7 +548,7 @@ impl NdiOutput {
                         let video_data = VideoData::from_buffer(
                             width as i32,
                             height as i32,
-                            FourCCVideoType::BGRX,
+                            FourCCVideoType::BGRA,
                             60,
                             1,
                             FrameFormatType::Progressive,
@@ -504,6 +582,8 @@ impl NdiOutput {
         scale: f64,
         align: String,
         shadow: bool,
+        default_song_bg_type: String,
+        default_song_bg_val: Option<String>,
     ) {
         let mut lock = self.current_slide.lock().unwrap();
         *lock = Some(NdiSlideData {
@@ -521,6 +601,8 @@ impl NdiOutput {
             scale,
             align,
             shadow,
+            default_song_bg_type,
+            default_song_bg_val,
         });
     }
 }

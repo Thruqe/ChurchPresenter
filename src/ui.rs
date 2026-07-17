@@ -21,6 +21,8 @@ fn draw_background(
     logo_mode: bool,
     logo_image_path: Option<&str>,
     song_stanza: Option<&SongStanza>,
+    default_song_bg_type: &str,
+    default_song_bg_val: Option<&str>,
 ) {
     if blackout {
         cr.set_source_rgb(0.0, 0.0, 0.0);
@@ -45,8 +47,14 @@ fn draw_background(
         cr.set_source_rgb(0.0, 0.0, 0.0);
         let _ = cr.paint();
     } else if let Some(stanza) = song_stanza {
-        if stanza.bg_type == "image" {
-            if let Some(ref bg_path) = stanza.bg_path {
+        let (actual_bg_type, actual_bg_path) = if stanza.bg_type == "transparent" {
+            (default_song_bg_type, default_song_bg_val)
+        } else {
+            (stanza.bg_type.as_str(), stanza.bg_path.as_deref())
+        };
+
+        if actual_bg_type == "image" {
+            if let Some(bg_path) = actual_bg_path {
                 let path = std::path::Path::new(bg_path);
                 if path.exists() && path.is_file() {
                     if let Ok(pixbuf) = gtk::gdk_pixbuf::Pixbuf::from_file(bg_path) {
@@ -63,6 +71,33 @@ fn draw_background(
                 }
             }
             cr.set_source_rgb(0.0, 0.0, 0.0);
+            let _ = cr.paint();
+        } else if actual_bg_type == "color" || actual_bg_type == "theme" {
+            let color_theme = actual_bg_path.unwrap_or("dark-slate");
+            match color_theme {
+                "classic-red" | "theme-classic-red" => cr.set_source_rgb(0.5, 0.0, 0.0),
+                "royal-blue" | "theme-royal-blue" => cr.set_source_rgb(0.0, 0.1, 0.4),
+                "forest-green" | "theme-forest-green" => cr.set_source_rgb(0.0, 0.3, 0.1),
+                "dark-slate" | "theme-dark-slate" => cr.set_source_rgb(0.1, 0.12, 0.15),
+                "black" | "theme-black" => cr.set_source_rgb(0.0, 0.0, 0.0),
+                _ => {
+                    let path = std::path::Path::new(color_theme);
+                    if path.exists() && path.is_file() {
+                        if let Ok(pixbuf) = gtk::gdk_pixbuf::Pixbuf::from_file(color_theme) {
+                            if let Some(scaled) = pixbuf.scale_simple(
+                                width as i32,
+                                height as i32,
+                                gtk::gdk_pixbuf::InterpType::Bilinear,
+                            ) {
+                                cr.set_source_pixbuf(&scaled, 0.0, 0.0);
+                                let _ = cr.paint();
+                                return;
+                            }
+                        }
+                    }
+                    cr.set_source_rgb(0.1, 0.12, 0.15);
+                }
+            }
             let _ = cr.paint();
         } else {
             // Lower third / transparent -> Draw dark slate in preview so white text is visible
@@ -329,9 +364,22 @@ fn draw_slide_cairo(
     logo_image_path: Option<&str>,
     song_stanza: Option<&SongStanza>,
     prev_song_stanza: Option<&SongStanza>,
+    default_song_bg_type: &str,
+    default_song_bg_val: Option<&str>,
 ) {
     let has_logo_image = logo_image_path.is_some();
-    draw_background(cr, width, height, theme, blackout, logo_mode, logo_image_path, song_stanza);
+    draw_background(
+        cr,
+        width,
+        height,
+        theme,
+        blackout,
+        logo_mode,
+        logo_image_path,
+        song_stanza,
+        default_song_bg_type,
+        default_song_bg_val,
+    );
 
     if let Some(start) = trans_start {
         let elapsed = start.elapsed().as_millis() as f64;
@@ -876,10 +924,17 @@ fn add_media_card(
         .build();
     copy_theme_btn.add_css_class("menu-item-button");
 
+    let use_song_bg_btn = Button::builder()
+        .label("Use as Song Background")
+        .has_frame(false)
+        .build();
+    use_song_bg_btn.add_css_class("menu-item-button");
+
     let delete_btn = Button::builder().label("Delete").has_frame(false).build();
     delete_btn.add_css_class("menu-item-button");
 
     popover_box.append(&copy_theme_btn);
+    popover_box.append(&use_song_bg_btn);
     popover_box.append(&delete_btn);
     popover.set_child(Some(&popover_box));
     popover.set_parent(&card);
@@ -903,6 +958,23 @@ fn add_media_card(
         // Delete from database
         crate::db::delete_media(&abs_path_delete);
         media_flow_delete.remove(&card_clone);
+    });
+
+    let popover_song_bg = popover.clone();
+    let abs_path_bg = abs_path.to_string();
+    let state_bg_clone = state.clone();
+    let update_theme_bg_clone = update_theme.clone();
+
+    use_song_bg_btn.connect_clicked(move |_| {
+        println!("DEBUG: Use as Song Background clicked for media file.");
+        popover_song_bg.popdown();
+        let mut s = state_bg_clone.borrow_mut();
+        s.default_song_bg_type = "image".to_string();
+        s.default_song_bg_val = Some(abs_path_bg.clone());
+        drop(s);
+        crate::db::set_config_value("default_song_bg_type", "image");
+        crate::db::set_config_value("default_song_bg_val", &abs_path_bg);
+        update_theme_bg_clone();
     });
 
     let path_str_clone = abs_path.to_string();
@@ -999,6 +1071,8 @@ pub fn build_ui(app: &Application) {
         live_prev_header: String::new(),
         live_prev_body: String::new(),
         live_trans_start: None,
+        default_song_bg_type: crate::db::get_config_value("default_song_bg_type").unwrap_or_else(|| "transparent".to_string()),
+        default_song_bg_val: crate::db::get_config_value("default_song_bg_val"),
     }));
 
     // Shared reference to update_live_layout to allow callers to refer to it before it is fully defined
@@ -1352,6 +1426,8 @@ pub fn build_ui(app: &Application) {
             s.logo_image_path.as_deref(),
             song_stanza_ref,
             None,
+            &s.default_song_bg_type,
+            s.default_song_bg_val.as_deref(),
         );
     });
 
@@ -1525,6 +1601,8 @@ pub fn build_ui(app: &Application) {
             s.logo_image_path.as_deref(),
             live_song_stanza_ref,
             live_prev_song_stanza_ref,
+            &s.default_song_bg_type,
+            s.default_song_bg_val.as_deref(),
         );
     });
 
@@ -1723,6 +1801,8 @@ pub fn build_ui(app: &Application) {
                 scale,
                 align,
                 shadow,
+                s.default_song_bg_type.clone(),
+                s.default_song_bg_val.clone(),
             );
         }
     });
@@ -2143,24 +2223,68 @@ pub fn build_ui(app: &Application) {
         .build();
     media_main.append(&media_scrolled);
 
-    let create_media_card = |title: &str, color_class: &str| -> Box {
-        let card = Box::builder()
-            .orientation(Orientation::Vertical)
-            .width_request(120)
-            .spacing(6)
-            .build();
-        card.add_css_class("media-card");
+    let create_media_card = {
+        let state = state.clone();
+        let update_theme = update_slide_theme_classes.clone();
+        move |title: &str, color_class: &str| -> Box {
+            let card = Box::builder()
+                .orientation(Orientation::Vertical)
+                .width_request(120)
+                .spacing(6)
+                .build();
+            card.add_css_class("media-card");
 
-        let thumb = Box::builder().height_request(80).build();
-        thumb.add_css_class("media-thumbnail-placeholder");
-        thumb.add_css_class(color_class);
+            let thumb = Box::builder().height_request(80).build();
+            thumb.add_css_class("media-thumbnail-placeholder");
+            thumb.add_css_class(color_class);
 
-        let lbl = Label::builder().label(title).build();
-        lbl.add_css_class("media-card-title");
+            let lbl = Label::builder().label(title).build();
+            lbl.add_css_class("media-card-title");
 
-        card.append(&thumb);
-        card.append(&lbl);
-        card
+            card.append(&thumb);
+            card.append(&lbl);
+
+            let popover = Popover::builder().build();
+            let popover_box = Box::builder().orientation(Orientation::Vertical).build();
+
+            let use_song_bg_btn = Button::builder()
+                .label("Use as Song Background")
+                .has_frame(false)
+                .build();
+            use_song_bg_btn.add_css_class("menu-item-button");
+
+            popover_box.append(&use_song_bg_btn);
+            popover.set_child(Some(&popover_box));
+            popover.set_parent(&card);
+
+            let popover_clone = popover.clone();
+            let gesture = gtk::GestureClick::builder().button(3).build();
+            gesture.connect_pressed(move |_, _, x, y| {
+                println!("DEBUG: Right-click triggered on default color media card.");
+                popover_clone.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+                popover_clone.popup();
+            });
+            card.add_controller(gesture);
+
+            let popover_song_bg = popover.clone();
+            let state_bg_clone = state.clone();
+            let update_theme_bg_clone = update_theme.clone();
+            let color_val = color_class.to_string();
+
+            use_song_bg_btn.connect_clicked(move |_| {
+                println!("DEBUG: Use as Song Background clicked for default color.");
+                popover_song_bg.popdown();
+                let mut s = state_bg_clone.borrow_mut();
+                s.default_song_bg_type = "color".to_string();
+                s.default_song_bg_val = Some(color_val.clone());
+                drop(s);
+                crate::db::set_config_value("default_song_bg_type", "color");
+                crate::db::set_config_value("default_song_bg_val", &color_val);
+                update_theme_bg_clone();
+            });
+
+            card
+        }
     };
 
     media_flow.insert(&create_media_card("Abstract Blue", "theme-royal-blue"), -1);
@@ -2236,10 +2360,10 @@ pub fn build_ui(app: &Application) {
                             println!("DEBUG: Chosen file path: {}", path_str);
 
                             // Copy/Resize/Compress file to workspace saves/imported_media folder
-                            let saves_dir = "/home/thruqe/Documents/Church-Presenter/saves";
-                            let media_dir = format!("{}/imported_media", saves_dir);
+                            let saves_dir = crate::db::get_saves_directory();
+                            let media_dir = saves_dir.join("imported_media");
                             std::fs::create_dir_all(&media_dir).ok();
-                            let dest_path = format!("{}/{}", media_dir, filename);
+                            let dest_path = media_dir.join(&filename).to_string_lossy().to_string();
 
                             // Check if the destination path already exists
                             let dest_path_buf = std::path::Path::new(&dest_path);
@@ -2812,9 +2936,9 @@ pub fn build_ui(app: &Application) {
                 clear_btn.remove_css_class("toolbar-button-active");
             }
 
-            let (bg_type, bg_path, font_size, scale, align, shadow) = {
+            let (bg_type, bg_path, font_size, scale, align, shadow, default_song_bg_type, default_song_bg_val) = {
                 let s = state.borrow();
-                if let Some(ref stanzas) = s.live_song_stanzas {
+                let (bt, bp, fs, sc, al, sh) = if let Some(ref stanzas) = s.live_song_stanzas {
                     if let Some(active_idx) = s.live_active_index {
                         if let Some(stanza) = stanzas.get(active_idx) {
                             (
@@ -2833,7 +2957,8 @@ pub fn build_ui(app: &Application) {
                     }
                 } else {
                     (String::new(), None, 40.0, 1.0, "center".to_string(), false)
-                }
+                };
+                (bt, bp, fs, sc, al, sh, s.default_song_bg_type.clone(), s.default_song_bg_val.clone())
             };
 
             ndi_out.update_slide(
@@ -2851,6 +2976,8 @@ pub fn build_ui(app: &Application) {
                 scale,
                 align,
                 shadow,
+                default_song_bg_type,
+                default_song_bg_val,
             );
 
             refresh_live_text_mode(

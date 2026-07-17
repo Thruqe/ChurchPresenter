@@ -28,14 +28,13 @@ fn main() {
     }
 
     // Initialize simplelog logger
-    let saves_dir = "/home/thruqe/Documents/Church-Presenter/saves";
-    let _ = std::fs::create_dir_all(saves_dir);
-    let log_path = "/home/thruqe/Documents/Church-Presenter/saves/logs.txt";
+    let saves_dir = crate::db::get_saves_directory();
+    let log_path = saves_dir.join("logs.txt");
     if let Ok(file) = std::fs::OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(true)
-        .open(log_path)
+        .open(&log_path)
     {
         use simplelog::*;
         let _ = WriteLogger::init(LevelFilter::Debug, Config::default(), file);
