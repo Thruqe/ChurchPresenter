@@ -88,3 +88,76 @@ jobs:
         with:
           name: church-presenter-macos
           path: target/release/gtk-app
+
+  release:
+    name: Create Tag and Release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version and create tag
+        run: |
+          VERSION=$(sed -n 's/^version *= *["'\'']\([^"'\''\\]*\)["'\'']/\1/p' version.toml)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          
+          git fetch --tags
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "TAG_EXISTS=true" >> $GITHUB_ENV
+            echo "Tag v$VERSION already exists. Skipping release."
+          else
+            echo "TAG_EXISTS=false" >> $GITHUB_ENV
+            echo "Tag v$VERSION does not exist. Creating..."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "v$VERSION"
+            git push origin "v$VERSION"
+          fi
+
+      - name: Download Linux binary
+        if: env.TAG_EXISTS == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: church-presenter-linux
+          path: ./dist-linux
+
+      - name: Download Windows binary
+        if: env.TAG_EXISTS == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: church-presenter-windows
+          path: ./dist-windows
+
+      - name: Download macOS binary
+        if: env.TAG_EXISTS == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: church-presenter-macos
+          path: ./dist-macos
+
+      - name: Prepare Release Assets
+        if: env.TAG_EXISTS == 'false'
+        run: |
+          mkdir ./release-assets
+          cp ./dist-linux/gtk-app ./release-assets/church-presenter-linux-amd64
+          cp ./dist-windows/gtk-app.exe ./release-assets/church-presenter-windows-amd64.exe
+          cp ./dist-macos/gtk-app ./release-assets/church-presenter-macos-amd64
+
+      - name: Create Release
+        if: env.TAG_EXISTS == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
+          body: |
+            Automated release for version v${{ env.VERSION }}.
+          files: |
+            ./release-assets/church-presenter-linux-amd64
+            ./release-assets/church-presenter-windows-amd64.exe
+            ./release-assets/church-presenter-macos-amd64

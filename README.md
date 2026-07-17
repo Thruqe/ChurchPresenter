@@ -79,6 +79,14 @@ cargo build --release
 
 Compiled binaries will be located under `target/release/`.
 
+## Releasing New Versions
+
+Releasing new builds is automated via GitHub Actions:
+
+1. Update the version string in `version.toml` (e.g., `version = "1.0.1"`).
+2. Commit and push the change to the `master` branch.
+3. The workflow will automatically detect the new version, build binaries for Linux, Windows, and macOS, push a new git tag (e.g. `v1.0.1`), and create a new GitHub Release with the compiled binaries attached as release assets.
+
 ## Database Configuration
 
 The application expects the SQLite Bible database `KJV.sqlite` to be present in the project root directory. It contains Scripture tables used by the lookup interface.
