@@ -7,9 +7,11 @@ edition = "2024"
 glib = "0.22.8"
 gtk = { version = "0.9", package = "gtk4" }
 rusqlite = { version = "0.31", features = ["bundled"] }
-ndi = "0.1.2"
 log = "0.4"
 simplelog = "0.12"
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+ndi = "0.1.2"
 
 [profile.release]
 opt-level = "z"        # Optimize aggressively for binary size

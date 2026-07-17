@@ -2,6 +2,7 @@ use crate::{println, eprintln};
 use gtk::cairo::{Context, FontSlant, FontWeight, Format, ImageSurface};
 use gtk::gdk_pixbuf::Pixbuf;
 use gtk::prelude::*;
+#[cfg(not(target_os = "macos"))]
 use ndi::{FourCCVideoType, FrameFormatType, VideoData};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -340,6 +341,12 @@ impl NdiOutput {
         let current_slide = Arc::new(Mutex::new(None::<NdiSlideData>));
         let thread_slide = current_slide.clone();
 
+        #[cfg(target_os = "macos")]
+        {
+            println!("NDI Broadcast is not supported on macOS.");
+        }
+
+        #[cfg(not(target_os = "macos"))]
         thread::spawn(move || {
             // NDI initialization
             if let Err(e) = ndi::initialize() {
