@@ -2,7 +2,13 @@
 
 Church Presenter is a lightweight, high-performance presentation software built with **Rust** and **GTK4**. It allows church media teams to present Scripture verses and song lyrics on local displays as well as broadcast them as transparent or themed overlays via **NDI (Network Device Interface)** directly into production software like OBS Studio, vMix, or Wirecast.
 
----
+## Pre-built Binaries
+
+Pre-built binaries are automatically compiled and updated via GitHub Actions for every commit to the master branch. You can download them directly from the latest workflow run:
+
+- 🐧 **Linux**: [Download Linux Binary](https://github.com/thruqe/Church-Presenter/actions) (under artifacts as `church-presenter-linux`)
+- 🏁 **Windows**: [Download Windows Binary](https://github.com/thruqe/Church-Presenter/actions) (under artifacts as `church-presenter-windows`)
+- 🍎 **macOS**: [Download macOS Binary](https://github.com/thruqe/Church-Presenter/actions) (under artifacts as `church-presenter-macos`)
 
 ## Key Features
 
@@ -12,8 +18,6 @@ Church Presenter is a lightweight, high-performance presentation software built 
 - 📡 **NDI Broadcast**: Instantly output live slides as an uncompressed, alpha-channel transparent video stream over the local network (supported on Windows and Linux).
 - ✨ **Fade Transitions**: Smooth animations when transitioning between live slides.
 - 🛠️ **Cross-Platform Compatibility**: Fully compatible with Linux, Windows, and macOS (with NDI broadcast compiled conditionally on macOS).
-
----
 
 ## Prerequisites & System Dependencies
 
@@ -48,8 +52,6 @@ brew install gtk4 pkg-config
 ```
 > **Note:** NDI Broadcast output is currently disabled on macOS because the upstream `ndi` crate does not provide macOS library binaries. The main presentation UI compiles and runs natively.
 
----
-
 ## Getting Started
 
 ### 1. Clone and Navigate
@@ -77,13 +79,9 @@ cargo build --release
 
 Compiled binaries will be located under `target/release/`.
 
----
-
 ## Database Configuration
 
 The application expects the SQLite Bible database `KJV.sqlite` to be present in the project root directory. It contains Scripture tables used by the lookup interface.
-
----
 
 ## License
 
