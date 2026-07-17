@@ -4,11 +4,11 @@ Church Presenter is a lightweight, high-performance presentation software built 
 
 ## Pre-built Binaries
 
-Pre-built binaries are automatically compiled and updated via GitHub Actions for every commit to the master branch. You can download them directly from the latest workflow run:
+Pre-built binaries are automatically compiled, tagged, and released via GitHub Actions. You can download the latest stable versions directly from GitHub Releases:
 
-- 🐧 **Linux**: [Download Linux Binary](https://github.com/thruqe/Church-Presenter/actions) (under artifacts as `church-presenter-linux`)
-- 🏁 **Windows**: [Download Windows Binary](https://github.com/thruqe/Church-Presenter/actions) (under artifacts as `church-presenter-windows`)
-- 🍎 **macOS**: [Download macOS Binary](https://github.com/thruqe/Church-Presenter/actions) (under artifacts as `church-presenter-macos`)
+- 🐧 **Linux**: [Download Linux Binary (amd64)](https://github.com/thruqe/Church-Presenter/releases/latest/download/church-presenter-linux-amd64)
+- 🏁 **Windows**: [Download Windows Binary (amd64)](https://github.com/thruqe/Church-Presenter/releases/latest/download/church-presenter-windows-amd64.exe)
+- 🍎 **macOS**: [Download macOS Binary (amd64)](https://github.com/thruqe/Church-Presenter/releases/latest/download/church-presenter-macos-amd64)
 
 ## Key Features
 
