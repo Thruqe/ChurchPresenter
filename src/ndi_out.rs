@@ -264,7 +264,7 @@ fn draw_single_slide_text(cr: &Context, width: f64, height: f64, slide: &NdiSlid
             );
         } else {
             let body_font_size = height * 0.06;
-            let header_font_size = height * 0.050;
+            let header_font_size = height * 0.045;
 
             // Wrap body text
             let max_width = width - width * 0.15;
@@ -307,20 +307,7 @@ fn draw_single_slide_text(cr: &Context, width: f64, height: f64, slide: &NdiSlid
 
             let body_start_y = (height - total_body_height) / 2.0;
 
-            // 1. Draw Header
-            if !slide.header.is_empty() {
-                cr.set_font_size(header_font_size);
-                cr.set_source_rgba(0.9, 0.9, 0.9, alpha);
-                if let Ok(ext) = cr.text_extents(&slide.header) {
-                    cr.move_to(
-                        (width - ext.width()) / 2.0,
-                        body_start_y - height * 0.046,
-                    );
-                    let _ = cr.show_text(&slide.header);
-                }
-            }
-
-            // 2. Draw Wrapped Body Lines
+            // 1. Draw Wrapped Body Lines
             cr.set_font_size(body_font_size);
             cr.set_source_rgba(1.0, 1.0, 1.0, alpha);
 
@@ -331,6 +318,18 @@ fn draw_single_slide_text(cr: &Context, width: f64, height: f64, slide: &NdiSlid
                     let _ = cr.show_text(line);
                 }
                 current_y += line_spacing;
+            }
+
+            // 2. Draw Header (reference like "Genesis 1:1") — below body, right-aligned
+            if !slide.header.is_empty() {
+                cr.set_font_size(header_font_size);
+                cr.set_source_rgba(0.85, 0.85, 0.85, alpha);
+                if let Ok(ext) = cr.text_extents(&slide.header) {
+                    let header_x = width - ext.width() - width * 0.075;
+                    let header_y = current_y + height * 0.02;
+                    cr.move_to(header_x, header_y);
+                    let _ = cr.show_text(&slide.header);
+                }
             }
         }
     }

@@ -99,9 +99,19 @@ fn draw_background(
                 }
             }
             let _ = cr.paint();
+        } else if actual_bg_type == "lower_transparent" {
+            // Draw fully transparent background with a semi-transparent black bar at the bottom
+            // This matches exactly what the NDI/live output renders
+            cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
+            let _ = cr.paint();
+            cr.set_source_rgba(0.0, 0.0, 0.0, 0.6);
+            let rect_height = height * 0.35;
+            let rect_y = height - rect_height;
+            cr.rectangle(0.0, rect_y, width, rect_height);
+            let _ = cr.fill();
         } else {
-            // Lower third / transparent -> Draw dark slate in preview so white text is visible
-            cr.set_source_rgb(0.1, 0.12, 0.15);
+            // Other / fully transparent -> black background in preview so white text is visible
+            cr.set_source_rgb(0.0, 0.0, 0.0);
             let _ = cr.paint();
         }
     } else {
@@ -149,7 +159,10 @@ fn draw_song_text(
     bg_type: &str,
     alpha: f64,
 ) {
-    let actual_font_size = font_size * scale;
+    // Scale font_size from NDI reference resolution (1080p) to the actual canvas height
+    // so the preview/live/editor appearance exactly matches the NDI output.
+    const NDI_REF_HEIGHT: f64 = 1080.0;
+    let actual_font_size = font_size * scale * (height / NDI_REF_HEIGHT);
     cr.set_font_size(actual_font_size);
 
     let (text_min_y, text_max_y, margin_x) = if bg_type == "lower_transparent" {
@@ -439,7 +452,7 @@ fn refresh_preview_text_mode(
     preview_title_label: &gtk::Label,
 ) {
     while let Some(child) = preview_text_container.first_child() {
-        preview_text_container.remove(&child);
+        child.unparent();
     }
 
     let s = state.borrow();
@@ -569,7 +582,7 @@ fn refresh_live_text_mode(
     clear_btn: &gtk::Button,
 ) {
     while let Some(child) = live_text_container.first_child() {
-        live_text_container.remove(&child);
+        child.unparent();
     }
 
     let (_live_slides, live_active_index, live_title, blackout_val, logo_val, clearout_val, _go_live_val, _logo_image_path_val) = {
@@ -3920,9 +3933,9 @@ fn show_song_editor_window(
                     }
                 }
             } else if stanza.bg_type == "lower_transparent" {
-                cr.set_source_rgb(0.1, 0.12, 0.15);
+                // Fully transparent canvas + semi-transparent bar at bottom 35% — matches NDI output
+                cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
                 let _ = cr.paint();
-                
                 cr.set_source_rgba(0.0, 0.0, 0.0, 0.6);
                 let rect_height = height as f64 * 0.35;
                 let rect_y = height as f64 - rect_height;
