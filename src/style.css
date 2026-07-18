@@ -592,43 +592,110 @@ popover button:focus-visible {
     font-weight: bold;
 }
 
-/* Custom About Window styling */
+/* ── About Window ─────────────────────────────────────────────────────────── */
+
+.about-header {
+    background: linear-gradient(160deg, #1e293b 0%, #0f172a 100%);
+    border-radius: 12px;
+    padding: 28px 24px 20px 24px;
+}
+
+.about-icon {
+    font-size: 40px;
+    color: #60a5fa;
+    margin-bottom: 4px;
+}
+
 .about-title {
-    font-size: 18px;
+    font-size: 22px;
     font-weight: bold;
-    color: #111827;
+    color: #f1f5f9;
+    letter-spacing: 0.5px;
 }
+
 .about-version {
-    font-size: 13px;
-    color: #6b7280;
+    font-size: 12px;
+    color: #60a5fa;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
 }
+
 .about-description {
-    font-size: 14px;
-    color: #374151;
-}
-.about-details {
     font-size: 13px;
-    color: #4b5563;
-    line-height: 1.5;
-    background-color: #f3f4f6;
-    padding: 12px;
-    border-radius: 6px;
+    color: #94a3b8;
+    margin-top: 4px;
 }
+
+.about-section-title {
+    font-size: 11px;
+    font-weight: bold;
+    color: #64748b;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    margin-top: 8px;
+}
+
+.about-feature-row {
+    background-color: #f8fafc;
+    border-radius: 8px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+}
+
+.about-feature-emoji {
+    font-size: 20px;
+    min-width: 28px;
+}
+
+.about-feature-name {
+    font-size: 13px;
+    font-weight: bold;
+    color: #1e293b;
+}
+
+.about-feature-detail {
+    font-size: 12px;
+    color: #475569;
+    line-height: 1.4;
+}
+
+.about-tech {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 6px;
+}
+
+.about-link {
+    font-size: 12px;
+}
+
+.about-license {
+    font-size: 11px;
+    color: #94a3b8;
+    margin-bottom: 4px;
+}
+
 .about-close-btn {
     background-color: #2563eb;
     background-image: none;
     color: #ffffff;
     border: none;
-    padding: 8px 24px;
-    border-radius: 6px;
+    padding: 9px 32px;
+    border-radius: 8px;
     font-weight: bold;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    margin-top: 10px;
+    font-size: 14px;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+    margin-top: 4px;
 }
+
 .about-close-btn:hover {
     background-color: #1d4ed8;
     color: #ffffff;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.5);
 }
+
 
 .theme-black {
     background-color: #000000;

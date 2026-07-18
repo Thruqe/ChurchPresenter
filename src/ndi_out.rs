@@ -26,6 +26,7 @@ pub struct NdiSlideData {
     pub shadow: bool,
     pub default_song_bg_type: String,
     pub default_song_bg_val: Option<String>,
+    pub lower_bar_height: f64, // fraction 0.0–1.0
 }
 
 #[derive(Clone)]
@@ -44,6 +45,7 @@ fn draw_background(
     bg_path: Option<&str>,
     default_song_bg_type: &str,
     default_song_bg_val: Option<&str>,
+    lower_bar_height: f64,
 ) {
     if blackout {
         cr.set_source_rgb(0.0, 0.0, 0.0);
@@ -120,7 +122,7 @@ fn draw_background(
                 let _ = cr.paint();
 
                 cr.set_source_rgba(0.0, 0.0, 0.0, 0.6);
-                let rect_height = height * 0.35;
+                let rect_height = height * lower_bar_height;
                 let rect_y = height - rect_height;
                 cr.rectangle(0.0, rect_y, width, rect_height);
                 let _ = cr.fill();
@@ -143,12 +145,13 @@ fn draw_song_text_cairo(
     shadow: bool,
     bg_type: &str,
     alpha: f64,
+    lower_bar_height: f64,
 ) {
     let actual_font_size = font_size * scale;
     cr.set_font_size(actual_font_size);
 
     let (text_min_y, text_max_y, margin_x) = if bg_type == "lower_transparent" {
-        (height - height * 0.35 + 10.0, height - 10.0, width * 0.05)
+        (height - height * lower_bar_height + 10.0, height - 10.0, width * 0.05)
     } else {
         (height * 0.1, height * 0.9, width * 0.075)
     };
@@ -241,10 +244,10 @@ fn draw_single_slide_text(cr: &Context, width: f64, height: f64, slide: &NdiSlid
         }
     } else if !slide.blackout && !slide.clearout {
         if !slide.bg_type.is_empty() {
-            // Draw lower transparent rect
+            // Draw lower transparent rect using the stanza's stored bar height
             if slide.bg_type == "lower_transparent" {
                 cr.set_source_rgba(0.0, 0.0, 0.0, 0.6 * alpha);
-                let rect_height = height * 0.35;
+                let rect_height = height * slide.lower_bar_height;
                 let rect_y = height - rect_height;
                 cr.rectangle(0.0, rect_y, width, rect_height);
                 let _ = cr.fill();
@@ -261,6 +264,7 @@ fn draw_single_slide_text(cr: &Context, width: f64, height: f64, slide: &NdiSlid
                 slide.shadow,
                 &slide.bg_type,
                 alpha,
+                slide.lower_bar_height,
             );
         } else {
             let body_font_size = height * 0.06;
@@ -502,6 +506,7 @@ impl NdiOutput {
                             slide.bg_path.as_deref(),
                             &slide.default_song_bg_type,
                             slide.default_song_bg_val.as_deref(),
+                            slide.lower_bar_height,
                         );
 
                         // 2. Draw text
@@ -590,6 +595,7 @@ impl NdiOutput {
         shadow: bool,
         default_song_bg_type: String,
         default_song_bg_val: Option<String>,
+        lower_bar_height: f64,
     ) {
         let mut lock = self.current_slide.lock().unwrap();
         *lock = Some(NdiSlideData {
@@ -609,6 +615,7 @@ impl NdiOutput {
             shadow,
             default_song_bg_type,
             default_song_bg_val,
+            lower_bar_height,
         });
     }
 }

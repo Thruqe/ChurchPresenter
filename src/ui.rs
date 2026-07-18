@@ -105,7 +105,12 @@ fn draw_background(
             cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
             let _ = cr.paint();
             cr.set_source_rgba(0.0, 0.0, 0.0, 0.6);
-            let rect_height = height * 0.35;
+            let bar_frac = if let Some(stanza) = song_stanza {
+                stanza.lower_bar_height
+            } else {
+                0.35
+            };
+            let rect_height = height * bar_frac;
             let rect_y = height - rect_height;
             cr.rectangle(0.0, rect_y, width, rect_height);
             let _ = cr.fill();
@@ -158,6 +163,7 @@ fn draw_song_text(
     shadow: bool,
     bg_type: &str,
     alpha: f64,
+    lower_bar_height: f64,
 ) {
     // Scale font_size from NDI reference resolution (1080p) to the actual canvas height
     // so the preview/live/editor appearance exactly matches the NDI output.
@@ -165,8 +171,9 @@ fn draw_song_text(
     let actual_font_size = font_size * scale * (height / NDI_REF_HEIGHT);
     cr.set_font_size(actual_font_size);
 
+    let px_scale = height / NDI_REF_HEIGHT;
     let (text_min_y, text_max_y, margin_x) = if bg_type == "lower_transparent" {
-        (height - height * 0.35 + 10.0, height - 10.0, width * 0.05)
+        (height - height * lower_bar_height + 10.0 * px_scale, height - 10.0 * px_scale, width * 0.05)
     } else {
         (height * 0.1, height * 0.9, width * 0.075)
     };
@@ -274,7 +281,7 @@ fn draw_single_slide_text(
         if let Some(stanza) = song_stanza {
             if stanza.bg_type == "lower_transparent" {
                 cr.set_source_rgba(0.0, 0.0, 0.0, 0.6 * alpha);
-                let rect_height = height * 0.35;
+                let rect_height = height * stanza.lower_bar_height;
                 let rect_y = height - rect_height;
                 cr.rectangle(0.0, rect_y, width, rect_height);
                 let _ = cr.fill();
@@ -291,6 +298,7 @@ fn draw_single_slide_text(
                 stanza.shadow,
                 &stanza.bg_type,
                 alpha,
+                stanza.lower_bar_height,
             );
         } else {
             let body_font_size = height * 0.06;
@@ -1180,25 +1188,42 @@ pub fn build_ui(app: &Application) {
                     "About" => {
                         if let Some(window) = app_clone.active_window() {
                             let about_win = gtk::Window::builder()
-                                .title("About ChurchPresenter")
+                                .title("About Church Presenter")
                                 .modal(true)
                                 .transient_for(&window)
-                                .default_width(460)
-                                .default_height(340)
-                                .resizable(false)
+                                .default_width(540)
+                                .default_height(620)
+                                .resizable(true)
                                 .build();
 
-                            let vbox = Box::builder()
-                                .orientation(Orientation::Vertical)
-                                .spacing(10)
-                                .margin_top(15)
-                                .margin_bottom(15)
-                                .margin_start(20)
-                                .margin_end(20)
+                            // Outer scrollable container
+                            let scroll = gtk::ScrolledWindow::builder()
+                                .hscrollbar_policy(gtk::PolicyType::Never)
+                                .vscrollbar_policy(gtk::PolicyType::Automatic)
                                 .build();
+
+                            let root = Box::builder()
+                                .orientation(Orientation::Vertical)
+                                .spacing(0)
+                                .build();
+
+                            // ── Header banner ─────────────────────────────────────
+                            let header = Box::builder()
+                                .orientation(Orientation::Vertical)
+                                .spacing(6)
+                                .margin_top(32)
+                                .margin_bottom(24)
+                                .margin_start(32)
+                                .margin_end(32)
+                                .halign(gtk::Align::Center)
+                                .build();
+                            header.add_css_class("about-header");
+
+                            let icon_lbl = Label::builder().label("✝").build();
+                            icon_lbl.add_css_class("about-icon");
 
                             let title_lbl = Label::builder()
-                                .label("ChurchPresenter - GTK4 Edition")
+                                .label("Church Presenter")
                                 .build();
                             title_lbl.add_css_class("about-title");
 
@@ -1208,22 +1233,138 @@ pub fn build_ui(app: &Application) {
                             ver_lbl.add_css_class("about-version");
 
                             let desc_lbl = Label::builder()
-                                .label("A fast, modernized presentation software built with Rust and GTK4.")
+                                .label("A lightweight, high-performance presentation software\nbuilt with Rust and GTK4 for church media teams.")
                                 .wrap(true)
                                 .justify(gtk::Justification::Center)
                                 .build();
                             desc_lbl.add_css_class("about-description");
 
-                            let details_lbl = Label::builder()
-                                .label("Key Features:\n• Quick Scripture SQL Lookup (KJV, HCSB, RVA)\n• Dynamic Word-Wrapping with Auto-Fit Scaling\n• Presentation Theme Control & Custom Branding\n• OS-native Windows 11 Title Bar\n\nBuilt with Rust, rusqlite, and GObject GTK4 Bindings.")
-                                .wrap(true)
+                            header.append(&icon_lbl);
+                            header.append(&title_lbl);
+                            header.append(&ver_lbl);
+                            header.append(&desc_lbl);
+
+                            // ── Divider ───────────────────────────────────────────
+                            let sep1 = gtk::Separator::builder()
+                                .orientation(Orientation::Horizontal)
+                                .margin_start(24)
+                                .margin_end(24)
+                                .build();
+
+                            // ── Features section ──────────────────────────────────
+                            let features_box = Box::builder()
+                                .orientation(Orientation::Vertical)
+                                .spacing(8)
+                                .margin_top(16)
+                                .margin_bottom(4)
+                                .margin_start(28)
+                                .margin_end(28)
+                                .build();
+
+                            let feat_title = Label::builder()
+                                .label("Key Features")
                                 .xalign(0.0)
                                 .build();
-                            details_lbl.add_css_class("about-details");
+                            feat_title.add_css_class("about-section-title");
+                            features_box.append(&feat_title);
+
+                            let features = [
+                                ("📖", "Scripture Database Integration", "Quick SQL search and lookup across KJV via the built-in SQLite database."),
+                                ("🎶", "Song Stanza & Lyric Presenter", "Manage songs, lyrics, alignments, shadows, scaling, and custom per-stanza backgrounds."),
+                                ("🎨", "Themed Slides & Dynamic Layouts", "Color & image themes (classic-red, royal-blue, forest-green, dark-slate, black) with logo mode, blackout, and clearout states."),
+                                ("📡", "NDI Broadcast Output", "Live slides as uncompressed, alpha-channel transparent video stream over LAN — directly into OBS Studio, vMix, or Wirecast."),
+                                ("✨", "Fade Transitions", "Smooth cross-fade animations when switching between live slides."),
+                                ("🛠️", "Cross-Platform", "Linux, Windows, and macOS — NDI broadcast compiled conditionally on macOS."),
+                            ];
+
+                            for (emoji, name, detail) in features {
+                                let row = Box::builder()
+                                    .orientation(Orientation::Horizontal)
+                                    .spacing(12)
+                                    .build();
+                                row.add_css_class("about-feature-row");
+
+                                let em = Label::builder().label(emoji).build();
+                                em.add_css_class("about-feature-emoji");
+
+                                let text_col = Box::builder()
+                                    .orientation(Orientation::Vertical)
+                                    .spacing(2)
+                                    .build();
+
+                                let name_lbl = Label::builder()
+                                    .label(name)
+                                    .xalign(0.0)
+                                    .build();
+                                name_lbl.add_css_class("about-feature-name");
+
+                                let detail_lbl = Label::builder()
+                                    .label(detail)
+                                    .xalign(0.0)
+                                    .wrap(true)
+                                    .wrap_mode(gtk::pango::WrapMode::WordChar)
+                                    .build();
+                                detail_lbl.add_css_class("about-feature-detail");
+
+                                text_col.append(&name_lbl);
+                                text_col.append(&detail_lbl);
+                                row.append(&em);
+                                row.append(&text_col);
+                                features_box.append(&row);
+                            }
+
+                            // ── Divider ───────────────────────────────────────────
+                            let sep2 = gtk::Separator::builder()
+                                .orientation(Orientation::Horizontal)
+                                .margin_start(24)
+                                .margin_end(24)
+                                .margin_top(8)
+                                .build();
+
+                            // ── Tech & Links ──────────────────────────────────────
+                            let info_box = Box::builder()
+                                .orientation(Orientation::Vertical)
+                                .spacing(6)
+                                .margin_top(12)
+                                .margin_bottom(8)
+                                .margin_start(28)
+                                .margin_end(28)
+                                .build();
+
+                            let tech_lbl = Label::builder()
+                                .label("Built with  Rust · rusqlite · GObject GTK4 Bindings · NDI SDK")
+                                .wrap(true)
+                                .justify(gtk::Justification::Center)
+                                .build();
+                            tech_lbl.add_css_class("about-tech");
+
+                            let github_lbl = Label::builder()
+                                .label("<a href=\"https://github.com/thruqe/Church-Presenter\">github.com/thruqe/Church-Presenter</a>")
+                                .use_markup(true)
+                                .justify(gtk::Justification::Center)
+                                .build();
+                            github_lbl.add_css_class("about-link");
+
+                            let license_lbl = Label::builder()
+                                .label("Licensed under the MIT License")
+                                .justify(gtk::Justification::Center)
+                                .build();
+                            license_lbl.add_css_class("about-license");
+
+                            info_box.append(&tech_lbl);
+                            info_box.append(&github_lbl);
+                            info_box.append(&license_lbl);
+
+                            // ── Close button ──────────────────────────────────────
+                            let btn_row = Box::builder()
+                                .orientation(Orientation::Horizontal)
+                                .halign(gtk::Align::Center)
+                                .margin_top(12)
+                                .margin_bottom(24)
+                                .build();
 
                             let close_btn = Button::builder()
                                 .label("Close")
-                                .halign(gtk::Align::Center)
                                 .build();
                             close_btn.add_css_class("about-close-btn");
 
@@ -1231,14 +1372,17 @@ pub fn build_ui(app: &Application) {
                             close_btn.connect_clicked(move |_| {
                                 win_clone.close();
                             });
+                            btn_row.append(&close_btn);
 
-                            vbox.append(&title_lbl);
-                            vbox.append(&ver_lbl);
-                            vbox.append(&desc_lbl);
-                            vbox.append(&details_lbl);
-                            vbox.append(&close_btn);
+                            root.append(&header);
+                            root.append(&sep1);
+                            root.append(&features_box);
+                            root.append(&sep2);
+                            root.append(&info_box);
+                            root.append(&btn_row);
 
-                            about_win.set_child(Some(&vbox));
+                            scroll.set_child(Some(&root));
+                            about_win.set_child(Some(&scroll));
                             about_win.present();
                         }
                     },
@@ -1772,7 +1916,7 @@ pub fn build_ui(app: &Application) {
                 active_body = "[Standby - Projection Off]".to_string();
             }
 
-            let (bg_type, bg_path, font_size, scale, align, shadow) = {
+            let (bg_type, bg_path, font_size, scale, align, shadow, lower_bar_height) = {
                 if let Some(ref stanzas) = s.live_song_stanzas {
                     if let Some(active_idx) = s.live_active_index {
                         if let Some(stanza) = stanzas.get(active_idx) {
@@ -1783,15 +1927,16 @@ pub fn build_ui(app: &Application) {
                                 stanza.scale,
                                 stanza.align.clone(),
                                 stanza.shadow,
+                                stanza.lower_bar_height,
                             )
                         } else {
-                            (String::new(), None, 40.0, 1.0, "center".to_string(), false)
+                            (String::new(), None, 40.0, 1.0, "center".to_string(), false, 0.35)
                         }
                     } else {
-                        (String::new(), None, 40.0, 1.0, "center".to_string(), false)
+                        (String::new(), None, 40.0, 1.0, "center".to_string(), false, 0.35)
                     }
                 } else {
-                    (String::new(), None, 40.0, 1.0, "center".to_string(), false)
+                    (String::new(), None, 40.0, 1.0, "center".to_string(), false, 0.35)
                 }
             };
 
@@ -1816,6 +1961,7 @@ pub fn build_ui(app: &Application) {
                 shadow,
                 s.default_song_bg_type.clone(),
                 s.default_song_bg_val.clone(),
+                lower_bar_height,
             );
         }
     });
@@ -2949,9 +3095,9 @@ pub fn build_ui(app: &Application) {
                 clear_btn.remove_css_class("toolbar-button-active");
             }
 
-            let (bg_type, bg_path, font_size, scale, align, shadow, default_song_bg_type, default_song_bg_val) = {
+            let (bg_type, bg_path, font_size, scale, align, shadow, lower_bar_height, default_song_bg_type, default_song_bg_val) = {
                 let s = state.borrow();
-                let (bt, bp, fs, sc, al, sh) = if let Some(ref stanzas) = s.live_song_stanzas {
+                let (bt, bp, fs, sc, al, sh, lbh) = if let Some(ref stanzas) = s.live_song_stanzas {
                     if let Some(active_idx) = s.live_active_index {
                         if let Some(stanza) = stanzas.get(active_idx) {
                             (
@@ -2961,17 +3107,18 @@ pub fn build_ui(app: &Application) {
                                 stanza.scale,
                                 stanza.align.clone(),
                                 stanza.shadow,
+                                stanza.lower_bar_height,
                             )
                         } else {
-                            (String::new(), None, 40.0, 1.0, "center".to_string(), false)
+                            (String::new(), None, 40.0, 1.0, "center".to_string(), false, 0.35)
                         }
                     } else {
-                        (String::new(), None, 40.0, 1.0, "center".to_string(), false)
+                        (String::new(), None, 40.0, 1.0, "center".to_string(), false, 0.35)
                     }
                 } else {
-                    (String::new(), None, 40.0, 1.0, "center".to_string(), false)
+                    (String::new(), None, 40.0, 1.0, "center".to_string(), false, 0.35)
                 };
-                (bt, bp, fs, sc, al, sh, s.default_song_bg_type.clone(), s.default_song_bg_val.clone())
+                (bt, bp, fs, sc, al, sh, lbh, s.default_song_bg_type.clone(), s.default_song_bg_val.clone())
             };
 
             ndi_out.update_slide(
@@ -2991,6 +3138,7 @@ pub fn build_ui(app: &Application) {
                 shadow,
                 default_song_bg_type,
                 default_song_bg_val,
+                lower_bar_height,
             );
 
             refresh_live_text_mode(
@@ -3705,6 +3853,7 @@ fn show_song_editor_window(
             scale: 1.0,
             align: "center".to_string(),
             shadow: false,
+            lower_bar_height: 0.35,
         }],
     };
 
@@ -3916,6 +4065,9 @@ fn show_song_editor_window(
         let song = song_state_draw.borrow();
         let idx = *active_stanza_idx_draw.borrow();
         if let Some(stanza) = song.stanzas.get(idx) {
+            let w = width as f64;
+            let h = height as f64;
+
             if stanza.bg_type == "image" {
                 if let Some(ref path_str) = stanza.bg_path {
                     let path = std::path::Path::new(path_str);
@@ -3933,14 +4085,60 @@ fn show_song_editor_window(
                     }
                 }
             } else if stanza.bg_type == "lower_transparent" {
-                // Fully transparent canvas + semi-transparent bar at bottom 35% — matches NDI output
-                cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
-                let _ = cr.paint();
+                // Checkerboard pattern to show transparency
+                let cell = 12.0f64;
+                let cols = (w / cell).ceil() as i32;
+                let rows = (h / cell).ceil() as i32;
+                for row in 0..rows {
+                    for col in 0..cols {
+                        let light = (row + col) % 2 == 0;
+                        if light {
+                            cr.set_source_rgb(0.85, 0.85, 0.85);
+                        } else {
+                            cr.set_source_rgb(0.65, 0.65, 0.65);
+                        }
+                        cr.rectangle(col as f64 * cell, row as f64 * cell, cell, cell);
+                        let _ = cr.fill();
+                    }
+                }
+
+                // Semi-transparent black bar at bottom
+                let bar_frac = stanza.lower_bar_height;
+                let rect_h = h * bar_frac;
+                let rect_y = h - rect_h;
                 cr.set_source_rgba(0.0, 0.0, 0.0, 0.6);
-                let rect_height = height as f64 * 0.35;
-                let rect_y = height as f64 - rect_height;
-                cr.rectangle(0.0, rect_y, width as f64, rect_height);
+                cr.rectangle(0.0, rect_y, w, rect_h);
                 let _ = cr.fill();
+
+                // ── Resize handle: top edge of the bar ──────────────────────
+                // Bright line across the full width
+                cr.set_source_rgba(1.0, 1.0, 1.0, 0.9);
+                cr.set_line_width(2.0);
+                cr.move_to(0.0, rect_y);
+                cr.line_to(w, rect_y);
+                let _ = cr.stroke();
+
+                // Three drag dots evenly spaced on the edge line
+                let dot_r = 5.0;
+                let dot_positions = [w * 0.25, w * 0.5, w * 0.75];
+                for &dx in &dot_positions {
+                    cr.set_source_rgba(1.0, 1.0, 1.0, 1.0);
+                    cr.arc(dx, rect_y, dot_r, 0.0, std::f64::consts::TAU);
+                    let _ = cr.fill();
+                    cr.set_source_rgba(0.3, 0.6, 1.0, 1.0);
+                    cr.set_line_width(1.5);
+                    cr.arc(dx, rect_y, dot_r, 0.0, std::f64::consts::TAU);
+                    let _ = cr.stroke();
+                }
+
+                // Small label hint
+                cr.set_source_rgba(1.0, 1.0, 1.0, 0.6);
+                cr.set_font_size(10.0);
+                let hint = format!("drag to resize  ({:.0}%)", bar_frac * 100.0);
+                if let Ok(ext) = cr.text_extents(&hint) {
+                    cr.move_to(w - ext.width() - 6.0, rect_y - 4.0);
+                    let _ = cr.show_text(&hint);
+                }
             } else {
                 cr.set_source_rgb(0.1, 0.12, 0.15);
                 let _ = cr.paint();
@@ -3948,8 +4146,8 @@ fn show_song_editor_window(
 
             draw_song_text(
                 cr,
-                width as f64,
-                height as f64,
+                w,
+                h,
                 &stanza.lyrics,
                 stanza.font_size,
                 stanza.scale,
@@ -3957,9 +4155,82 @@ fn show_song_editor_window(
                 stanza.shadow,
                 &stanza.bg_type,
                 1.0,
+                stanza.lower_bar_height,
             );
         }
     });
+
+    // ── Drag-to-resize: GestureDrag on the editor canvas ─────────────────
+    {
+        let song_state_drag = song_state.clone();
+        let active_stanza_idx_drag = active_stanza_idx.clone();
+        let canvas_da = canvas_drawing_area.clone();
+
+        let drag_start_bar_height: Rc<RefCell<f64>> = Rc::new(RefCell::new(0.35));
+        let drag_active: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
+
+        let drag = gtk::GestureDrag::new();
+
+        // Begin: only activate when the pointer is within ±12px of the bar's top edge
+        drag.connect_drag_begin({
+            let song_state_drag = song_state_drag.clone();
+            let active_stanza_idx_drag = active_stanza_idx_drag.clone();
+            let canvas_da = canvas_da.clone();
+            let drag_start_bar_height = drag_start_bar_height.clone();
+            let drag_active = drag_active.clone();
+            move |_, start_x, start_y| {
+                let song = song_state_drag.borrow();
+                let idx = *active_stanza_idx_drag.borrow();
+                if let Some(stanza) = song.stanzas.get(idx) {
+                    if stanza.bg_type == "lower_transparent" {
+                        let h = canvas_da.height() as f64;
+                        let bar_y = h - h * stanza.lower_bar_height;
+                        let _ = start_x; // unused — we only check y
+                        if (start_y - bar_y).abs() <= 16.0 {
+                            *drag_start_bar_height.borrow_mut() = stanza.lower_bar_height;
+                            *drag_active.borrow_mut() = true;
+                            return;
+                        }
+                    }
+                }
+                *drag_active.borrow_mut() = false;
+            }
+        });
+
+        // Update: live-update bar height as the user drags
+        drag.connect_drag_update({
+            let song_state_drag = song_state_drag.clone();
+            let active_stanza_idx_drag = active_stanza_idx_drag.clone();
+            let canvas_da = canvas_da.clone();
+            let drag_start_bar_height = drag_start_bar_height.clone();
+            let drag_active = drag_active.clone();
+            move |_, _offset_x, offset_y| {
+                if !*drag_active.borrow() { return; }
+                let h = canvas_da.height() as f64;
+                if h <= 0.0 { return; }
+                let start_frac = *drag_start_bar_height.borrow();
+                // Dragging UP (negative offset_y) → bar gets taller
+                let delta_frac = -offset_y / h;
+                let new_frac = (start_frac + delta_frac).clamp(0.10, 0.90);
+                let mut song = song_state_drag.borrow_mut();
+                let idx = *active_stanza_idx_drag.borrow();
+                if let Some(stanza) = song.stanzas.get_mut(idx) {
+                    stanza.lower_bar_height = new_frac;
+                }
+                drop(song);
+                canvas_da.queue_draw();
+            }
+        });
+
+        drag.connect_drag_end({
+            let drag_active = drag_active.clone();
+            move |_, _, _| {
+                *drag_active.borrow_mut() = false;
+            }
+        });
+
+        canvas_drawing_area.add_controller(drag);
+    }
 
     // Helper to push history
     let push_history = {
@@ -4377,6 +4648,7 @@ fn show_song_editor_window(
             scale: 1.0,
             align: "center".to_string(),
             shadow: false,
+            lower_bar_height: 0.35,
         });
         drop(song);
         let pop_fn = populate_stanzas_list_rc_c.borrow().as_ref().unwrap().clone();

@@ -22,8 +22,14 @@ pub fn init_songs_tables() {
                 scale REAL NOT NULL DEFAULT 1.0,
                 align TEXT NOT NULL DEFAULT 'center',
                 shadow INTEGER NOT NULL DEFAULT 0,
-                order_index INTEGER NOT NULL
+                order_index INTEGER NOT NULL,
+                lower_bar_height REAL DEFAULT 0.35
             )",
+            [],
+        );
+        // Migration: add lower_bar_height column if it doesn't exist yet (for existing databases)
+        let _ = conn.execute(
+            "ALTER TABLE song_stanzas ADD COLUMN lower_bar_height REAL DEFAULT 0.35",
             [],
         );
     }
@@ -40,7 +46,7 @@ pub fn get_songs() -> Vec<Song> {
                     if let Ok((song_id, title)) = r {
                         let mut stanzas = Vec::new();
                         if let Ok(mut s_stmt) = conn.prepare(
-                            "SELECT name, lyrics, bg_type, bg_path, font_size, scale, align, shadow 
+                            "SELECT name, lyrics, bg_type, bg_path, font_size, scale, align, shadow, lower_bar_height 
                              FROM song_stanzas WHERE song_id = ? ORDER BY order_index"
                         ) {
                             if let Ok(s_rows) = s_stmt.query_map(params![song_id], |s_row| {
@@ -53,6 +59,7 @@ pub fn get_songs() -> Vec<Song> {
                                     scale: s_row.get(5)?,
                                     align: s_row.get(6)?,
                                     shadow: s_row.get::<_, i32>(7)? != 0,
+                                    lower_bar_height: s_row.get::<_, Option<f64>>(8)?.unwrap_or(0.35),
                                 })
                             }) {
                                 for sr in s_rows {
@@ -82,8 +89,8 @@ pub fn save_song(song: &Song) -> i64 {
             let _ = conn.execute("DELETE FROM song_stanzas WHERE song_id = ?", params![song_id]);
             for (idx, stanza) in song.stanzas.iter().enumerate() {
                 let _ = conn.execute(
-                    "INSERT INTO song_stanzas (song_id, name, lyrics, bg_type, bg_path, font_size, scale, align, shadow, order_index)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO song_stanzas (song_id, name, lyrics, bg_type, bg_path, font_size, scale, align, shadow, order_index, lower_bar_height)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     params![
                         song_id,
                         stanza.name,
@@ -94,7 +101,8 @@ pub fn save_song(song: &Song) -> i64 {
                         stanza.scale,
                         stanza.align,
                         if stanza.shadow { 1 } else { 0 },
-                        idx as i32
+                        idx as i32,
+                        stanza.lower_bar_height
                     ],
                 );
             }
@@ -104,8 +112,8 @@ pub fn save_song(song: &Song) -> i64 {
             let song_id = conn.last_insert_rowid();
             for (idx, stanza) in song.stanzas.iter().enumerate() {
                 let _ = conn.execute(
-                    "INSERT INTO song_stanzas (song_id, name, lyrics, bg_type, bg_path, font_size, scale, align, shadow, order_index)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO song_stanzas (song_id, name, lyrics, bg_type, bg_path, font_size, scale, align, shadow, order_index, lower_bar_height)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     params![
                         song_id,
                         stanza.name,
@@ -116,7 +124,8 @@ pub fn save_song(song: &Song) -> i64 {
                         stanza.scale,
                         stanza.align,
                         if stanza.shadow { 1 } else { 0 },
-                        idx as i32
+                        idx as i32,
+                        stanza.lower_bar_height
                     ],
                 );
             }

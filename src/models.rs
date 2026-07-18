@@ -15,6 +15,7 @@ pub struct SongStanza {
     pub scale: f64,
     pub align: String,        // "left", "right", "center"
     pub shadow: bool,
+    pub lower_bar_height: f64, // fraction 0.0–1.0 of canvas height (only used for lower_transparent)
 }
 
 #[derive(Clone, Debug)]
