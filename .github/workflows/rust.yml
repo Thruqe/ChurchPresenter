@@ -28,11 +28,16 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      - name: Upload Linux Binary
+      - name: Build Linux Installer
+        run: |
+          VERSION=$(sed -n 's/^version *= *["'\'']\([^"'\''\\]*\)["'\'']/\1/p' version.toml)
+          ./metadata/bundle_linux.sh "$VERSION"
+
+      - name: Upload Linux Installer
         uses: actions/upload-artifact@v4
         with:
-          name: church-presenter-linux
-          path: target/release/gtk-app
+          name: church-presenter-linux-installer
+          path: church-presenter-setup.deb
 
   build-windows:
     name: Build for Windows
@@ -61,11 +66,41 @@ jobs:
         shell: msys2 {0}
         run: cargo build --release
 
-      - name: Upload Windows Binary
+      - name: Bundle Windows files
+        shell: msys2 {0}
+        run: ./metadata/bundle_windows.sh
+
+      - name: Compile Windows Installer
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's/^version *= *["'\'']\([^"'\''\\]*\)["'\'']/\1/p' version.toml)
+          makensis /DVERSION=$VERSION metadata/installer.nsi
+
+      - name: Sign Executable and Installer (Windows)
+        if: ${{ secrets.SIGNING_CERT_BASE64 != '' }}
+        shell: powershell
+        run: |
+          $certBytes = [System.Convert]::FromBase64String("${{ secrets.SIGNING_CERT_BASE64 }}")
+          [System.IO.File]::WriteAllBytes("cert.pfx", $certBytes)
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits" -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($signtool) {
+            # Sign binary inside bundle first
+            & $signtool.FullName sign /f cert.pfx /p "${{ secrets.SIGNING_CERT_PASSWORD }}" /tr http://timestamp.digicert.com /td sha256 /fd sha256 dist-windows-bundle\church-presenter.exe
+            # Recompile installer with signed binary
+            $version = (Get-Content version.toml | Select-String -Pattern 'version\s*=\s*"(.*)"') -replace 'version\s*=\s*"(.*)"', '$1'
+            makensis /DVERSION=$version metadata/installer.nsi
+            # Sign the final setup installer
+            & $signtool.FullName sign /f cert.pfx /p "${{ secrets.SIGNING_CERT_PASSWORD }}" /tr http://timestamp.digicert.com /td sha256 /fd sha256 church-presenter-setup.exe
+          } else {
+            Write-Warning "signtool.exe not found. Skipping signature step."
+          }
+          Remove-Item cert.pfx -ErrorAction SilentlyContinue
+
+      - name: Upload Windows Installer
         uses: actions/upload-artifact@v4
         with:
-          name: church-presenter-windows
-          path: target/release/gtk-app.exe
+          name: church-presenter-windows-installer
+          path: church-presenter-setup.exe
 
   build-macos:
     name: Build for macOS
@@ -83,11 +118,22 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      - name: Upload macOS Binary
+      - name: Create macOS App Bundle and DMG
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          MACOS_NOTARIZATION_APPLE_ID: ${{ secrets.MACOS_NOTARIZATION_APPLE_ID }}
+          MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+        run: |
+          VERSION=$(sed -n 's/^version *= *["'\'']\([^"'\''\\]*\)["'\'']/\1/p' version.toml)
+          ./metadata/bundle_macos.sh "$VERSION"
+
+      - name: Upload macOS Installer
         uses: actions/upload-artifact@v4
         with:
-          name: church-presenter-macos
-          path: target/release/gtk-app
+          name: church-presenter-macos-installer
+          path: church-presenter-setup.dmg
 
   release:
     name: Create Tag and Release
@@ -120,34 +166,35 @@ jobs:
             git push origin "v$VERSION"
           fi
 
-      - name: Download Linux binary
+      - name: Download Linux installer
         if: env.TAG_EXISTS == 'false'
         uses: actions/download-artifact@v4
         with:
-          name: church-presenter-linux
+          name: church-presenter-linux-installer
           path: ./dist-linux
 
-      - name: Download Windows binary
+      - name: Download Windows installer
         if: env.TAG_EXISTS == 'false'
         uses: actions/download-artifact@v4
         with:
-          name: church-presenter-windows
+          name: church-presenter-windows-installer
           path: ./dist-windows
 
-      - name: Download macOS binary
+      - name: Download macOS installer
         if: env.TAG_EXISTS == 'false'
         uses: actions/download-artifact@v4
         with:
-          name: church-presenter-macos
+          name: church-presenter-macos-installer
           path: ./dist-macos
 
       - name: Prepare Release Assets
         if: env.TAG_EXISTS == 'false'
         run: |
-          mkdir ./release-assets
-          cp ./dist-linux/gtk-app ./release-assets/church-presenter-linux-amd64
-          cp ./dist-windows/gtk-app.exe ./release-assets/church-presenter-windows-amd64.exe
-          cp ./dist-macos/gtk-app ./release-assets/church-presenter-macos-amd64
+          mkdir -p ./release-assets
+          cp ./dist-linux/church-presenter-setup.deb ./release-assets/church-presenter-linux-amd64.deb
+          cp ./dist-windows/church-presenter-setup.exe ./release-assets/church-presenter-windows-amd64-setup.exe
+          cp ./dist-macos/church-presenter-setup.dmg ./release-assets/church-presenter-macos-amd64.dmg
+          cp metadata/play.ico ./release-assets/play.ico
 
       - name: Create Release
         if: env.TAG_EXISTS == 'false'
@@ -157,7 +204,10 @@ jobs:
           name: Release v${{ env.VERSION }}
           body: |
             Automated release for version v${{ env.VERSION }}.
+            
+            Installers for all supported platforms are attached below.
           files: |
-            ./release-assets/church-presenter-linux-amd64
-            ./release-assets/church-presenter-windows-amd64.exe
-            ./release-assets/church-presenter-macos-amd64
+            ./release-assets/church-presenter-linux-amd64.deb
+            ./release-assets/church-presenter-windows-amd64-setup.exe
+            ./release-assets/church-presenter-macos-amd64.dmg
+            ./release-assets/play.ico
