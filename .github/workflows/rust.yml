@@ -70,6 +70,11 @@ jobs:
         shell: msys2 {0}
         run: ./metadata/bundle_windows.sh
 
+      - name: Install NSIS
+        run: |
+          choco install nsis -y
+          Add-Content $env:GITHUB_PATH "C:\Program Files (x86)\NSIS"
+
       - name: Compile Windows Installer
         shell: bash
         run: |
