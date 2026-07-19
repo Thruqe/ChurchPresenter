@@ -9,7 +9,7 @@
 !define COMP_NAME "Thruqe"
 !define APP_VERSION "${VERSION}"
 !define OUT_FILE "church-presenter-setup.exe"
-!define ICON_FILE "metadata/play.ico"
+!define ICON_FILE "play.ico"
 !define HELP_URL "mailto:danielpeter0039@gmail.com"
 
 # Set compression
@@ -39,7 +39,7 @@ SetCompressor lzma
 !insertmacro MUI_LANGUAGE "English"
 
 Name "${APP_NAME}"
-OutFile "${OUT_FILE}"
+OutFile "../${OUT_FILE}"
 InstallDir "$PROGRAMFILES64\${APP_NAME}"
 InstallDirRegKey HKLM "Software\${COMP_NAME}\${APP_NAME}" "Install_Dir"
 RequestExecutionLevel admin
@@ -48,7 +48,7 @@ Section "Install"
     SetOutPath "$INSTDIR"
     
     # Copy all files from the bundle directory
-    File /r "dist-windows-bundle\*"
+    File /r "../dist-windows-bundle\*"
 
     # Write registry keys for uninstaller
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayName" "${APP_NAME}"
