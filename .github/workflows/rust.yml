@@ -79,7 +79,7 @@ jobs:
         shell: bash
         run: |
           VERSION=$(sed -n 's/^version *= *["'\'']\([^"'\''\\]*\)["'\'']/\1/p' version.toml)
-          makensis /DVERSION=$VERSION metadata/installer.nsi
+          makensis -DVERSION=$VERSION metadata/installer.nsi
 
       - name: Sign Executable and Installer (Windows)
         shell: powershell
@@ -96,7 +96,7 @@ jobs:
               & $signtool.FullName sign /f cert.pfx /p $env:SIGNING_CERT_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 dist-windows-bundle\church-presenter.exe
               # Recompile installer with signed binary
               $version = (Get-Content version.toml | Select-String -Pattern 'version\s*=\s*"(.*)"') -replace 'version\s*=\s*"(.*)"', '$1'
-              makensis /DVERSION=$version metadata/installer.nsi
+              makensis -DVERSION=$version metadata/installer.nsi
               # Sign the final setup installer
               & $signtool.FullName sign /f cert.pfx /p $env:SIGNING_CERT_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 church-presenter-setup.exe
             } else {
