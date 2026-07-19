@@ -10,7 +10,7 @@ use std::rc::Rc;
 use crate::db::{
     autocomplete_book_name, get_songs, parse_reference, query_verses, query_verses_by_mode,
 };
-use crate::models::{AppState, Verse, SongStanza};
+use crate::models::{AppState, SongStanza, Verse};
 
 fn draw_background(
     cr: &gtk::cairo::Context,
@@ -173,7 +173,11 @@ fn draw_song_text(
 
     let px_scale = height / NDI_REF_HEIGHT;
     let (text_min_y, text_max_y, margin_x) = if bg_type == "lower_transparent" {
-        (height - height * lower_bar_height + 10.0 * px_scale, height - 10.0 * px_scale, width * 0.05)
+        (
+            height - height * lower_bar_height + 10.0 * px_scale,
+            height - 10.0 * px_scale,
+            width * 0.05,
+        )
     } else {
         (height * 0.1, height * 0.9, width * 0.075)
     };
@@ -489,7 +493,8 @@ fn refresh_preview_text_mode(
         preview_text_container.append(&card_box);
     } else {
         if let Some(ref stanzas) = s.preview_song_stanzas {
-            let song_title = s.selected_song_index
+            let song_title = s
+                .selected_song_index
                 .map(|idx| s.songs[idx].title.clone())
                 .unwrap_or_default();
 
@@ -535,7 +540,8 @@ fn refresh_preview_text_mode(
                     s_mut.selected_stanza_index = Some(idx);
                     s_mut.preview_header = format!("{} - {}", song_title_c, name_c);
                     s_mut.preview_body = lyrics_c.clone();
-                    preview_title_label_c.set_text(&format!("Preview - {} ({})", song_title_c, name_c));
+                    preview_title_label_c
+                        .set_text(&format!("Preview - {} ({})", song_title_c, name_c));
                     drop(s_mut);
                     preview_drawing_area_c.queue_draw();
                     refresh_preview_text_mode(
@@ -561,7 +567,12 @@ fn refresh_preview_text_mode(
                         s_mut.live_song_stanzas = Some(stanzas_dc.clone());
                         s_mut.live_slides = stanzas_dc
                             .iter()
-                            .map(|st| (format!("{} - {}", song_title_dc, st.name), st.lyrics.clone()))
+                            .map(|st| {
+                                (
+                                    format!("{} - {}", song_title_dc, st.name),
+                                    st.lyrics.clone(),
+                                )
+                            })
                             .collect();
                         s_mut.live_title = format!("Live - {}", song_title_dc);
                         s_mut.live_active_index = Some(idx);
@@ -593,7 +604,16 @@ fn refresh_live_text_mode(
         child.unparent();
     }
 
-    let (_live_slides, live_active_index, live_title, blackout_val, logo_val, clearout_val, _go_live_val, _logo_image_path_val) = {
+    let (
+        _live_slides,
+        live_active_index,
+        live_title,
+        blackout_val,
+        logo_val,
+        clearout_val,
+        _go_live_val,
+        _logo_image_path_val,
+    ) = {
         let s = state.borrow();
         (
             s.live_slides.clone(),
@@ -610,13 +630,27 @@ fn refresh_live_text_mode(
     let s = state.borrow();
     if s.live_song_stanzas.is_none() {
         let ref_label = gtk::Label::builder()
-            .label(if blackout_val { "" } else if logo_val { "ChurchPresenter" } else { &s.live_current_header })
+            .label(if blackout_val {
+                ""
+            } else if logo_val {
+                "ChurchPresenter"
+            } else {
+                &s.live_current_header
+            })
             .xalign(0.0)
             .build();
         ref_label.add_css_class("text-output-reference");
 
         let body_label = gtk::Label::builder()
-            .label(if blackout_val { "" } else if logo_val { "✝\nStandby Screen" } else if clearout_val { "" } else { &s.live_current_body })
+            .label(if blackout_val {
+                ""
+            } else if logo_val {
+                "✝\nStandby Screen"
+            } else if clearout_val {
+                ""
+            } else {
+                &s.live_current_body
+            })
             .xalign(0.0)
             .wrap(true)
             .wrap_mode(gtk::pango::WrapMode::WordChar)
@@ -650,7 +684,15 @@ fn refresh_live_text_mode(
                 ref_label.add_css_class("text-output-reference");
 
                 let body_label = gtk::Label::builder()
-                    .label(if blackout_val { "" } else if logo_val { "✝\nStandby Screen" } else if clearout_val { "" } else { &stanza.lyrics })
+                    .label(if blackout_val {
+                        ""
+                    } else if logo_val {
+                        "✝\nStandby Screen"
+                    } else if clearout_val {
+                        ""
+                    } else {
+                        &stanza.lyrics
+                    })
                     .xalign(0.0)
                     .wrap(true)
                     .wrap_mode(gtk::pango::WrapMode::WordChar)
@@ -684,7 +726,8 @@ fn refresh_live_text_mode(
                     if s_mut.live_active_index != Some(idx) {
                         s_mut.live_prev_header = s_mut.live_current_header.clone();
                         s_mut.live_prev_body = s_mut.live_current_body.clone();
-                        s_mut.live_current_header = format!("{} - {}", song_title_c, stanzas_c[idx].name);
+                        s_mut.live_current_header =
+                            format!("{} - {}", song_title_c, stanzas_c[idx].name);
                         s_mut.live_current_body = stanzas_c[idx].lyrics.clone();
                         s_mut.live_active_index = Some(idx);
                         s_mut.live_trans_start = Some(std::time::Instant::now());
@@ -738,11 +781,15 @@ fn start_live_transition(drawing_area: &gtk::DrawingArea, state: &Rc<RefCell<App
 fn get_media_dimensions(path: &str) -> Option<(i32, i32)> {
     let output = std::process::Command::new("ffprobe")
         .args(&[
-            "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=width,height",
-            "-of", "csv=s=x:p=0",
-            path
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=s=x:p=0",
+            path,
         ])
         .output()
         .ok()?;
@@ -827,15 +874,18 @@ fn add_theme_card(
 
     let popover = Popover::builder().build();
     let popover_box = Box::builder().orientation(Orientation::Vertical).build();
-    
-    let use_logo_btn = Button::builder().label("Use as Logo").has_frame(false).build();
+
+    let use_logo_btn = Button::builder()
+        .label("Use as Logo")
+        .has_frame(false)
+        .build();
     use_logo_btn.add_css_class("menu-item-button");
     popover_box.append(&use_logo_btn);
 
     let delete_btn = Button::builder().label("Delete").has_frame(false).build();
     delete_btn.add_css_class("menu-item-button");
     popover_box.append(&delete_btn);
-    
+
     popover.set_child(Some(&popover_box));
     popover.set_parent(&theme_card);
 
@@ -1009,7 +1059,8 @@ fn add_media_card(
         popover.popdown();
         let mut s = state_clone.borrow_mut();
         if !s.custom_themes.iter().any(|(_, p)| p == &path_str_clone) {
-            s.custom_themes.push((filename_clone.clone(), path_str_clone.clone()));
+            s.custom_themes
+                .push((filename_clone.clone(), path_str_clone.clone()));
             crate::db::add_theme(&filename_clone, &path_str_clone);
             add_theme_card(
                 &themes_flow_clone,
@@ -1033,7 +1084,8 @@ pub fn build_ui(app: &Application) {
     let logo_image_path = crate::db::get_config_value("logo_image_path");
 
     // Load persisted theme
-    let db_selected_theme = crate::db::get_config_value("selected_theme").unwrap_or_else(|| "classic-red".to_string());
+    let db_selected_theme =
+        crate::db::get_config_value("selected_theme").unwrap_or_else(|| "classic-red".to_string());
     let selected_theme: &'static str = match db_selected_theme.as_str() {
         "classic-red" => "classic-red",
         "royal-blue" => "royal-blue",
@@ -1092,7 +1144,8 @@ pub fn build_ui(app: &Application) {
         live_prev_header: String::new(),
         live_prev_body: String::new(),
         live_trans_start: None,
-        default_song_bg_type: crate::db::get_config_value("default_song_bg_type").unwrap_or_else(|| "transparent".to_string()),
+        default_song_bg_type: crate::db::get_config_value("default_song_bg_type")
+            .unwrap_or_else(|| "transparent".to_string()),
         default_song_bg_val: crate::db::get_config_value("default_song_bg_val"),
     }));
 
@@ -1930,13 +1983,37 @@ pub fn build_ui(app: &Application) {
                                 stanza.lower_bar_height,
                             )
                         } else {
-                            (String::new(), None, 40.0, 1.0, "center".to_string(), false, 0.35)
+                            (
+                                String::new(),
+                                None,
+                                40.0,
+                                1.0,
+                                "center".to_string(),
+                                false,
+                                0.35,
+                            )
                         }
                     } else {
-                        (String::new(), None, 40.0, 1.0, "center".to_string(), false, 0.35)
+                        (
+                            String::new(),
+                            None,
+                            40.0,
+                            1.0,
+                            "center".to_string(),
+                            false,
+                            0.35,
+                        )
                     }
                 } else {
-                    (String::new(), None, 40.0, 1.0, "center".to_string(), false, 0.35)
+                    (
+                        String::new(),
+                        None,
+                        40.0,
+                        1.0,
+                        "center".to_string(),
+                        false,
+                        0.35,
+                    )
                 }
             };
 
@@ -2104,14 +2181,14 @@ pub fn build_ui(app: &Application) {
             }
             let songs = state.borrow().songs.clone();
             for song in songs {
-                let row_lbl = Label::builder()
-                    .label(&song.title)
-                    .xalign(0.0)
-                    .build();
+                let row_lbl = Label::builder().label(&song.title).xalign(0.0).build();
                 row_lbl.add_css_class("sidebar-row");
 
                 let popover = Popover::builder().has_arrow(true).build();
-                let p_box = Box::builder().orientation(Orientation::Vertical).spacing(0).build();
+                let p_box = Box::builder()
+                    .orientation(Orientation::Vertical)
+                    .spacing(0)
+                    .build();
                 let edit_btn = Button::builder().label("Edit Song").build();
                 edit_btn.add_css_class("menu-item-button");
                 edit_btn.set_has_frame(false);
@@ -2135,7 +2212,11 @@ pub fn build_ui(app: &Application) {
                 let populate_songs_sidebar_rc_edit = populate_songs_sidebar_rc.clone();
                 edit_btn.connect_clicked(move |_| {
                     popover_edit_c.popdown();
-                    let pop_fn = populate_songs_sidebar_rc_edit.borrow().as_ref().unwrap().clone();
+                    let pop_fn = populate_songs_sidebar_rc_edit
+                        .borrow()
+                        .as_ref()
+                        .unwrap()
+                        .clone();
                     show_song_editor_window(&state_edit, song.id, pop_fn);
                 });
 
@@ -2152,7 +2233,11 @@ pub fn build_ui(app: &Application) {
                         s.selected_song_index = None;
                         s.selected_stanza_index = None;
                     }
-                    let pop_fn = populate_songs_sidebar_rc_delete.borrow().as_ref().unwrap().clone();
+                    let pop_fn = populate_songs_sidebar_rc_delete
+                        .borrow()
+                        .as_ref()
+                        .unwrap()
+                        .clone();
                     pop_fn();
                 });
 
@@ -2420,7 +2505,8 @@ pub fn build_ui(app: &Application) {
             let gesture = gtk::GestureClick::builder().button(3).build();
             gesture.connect_pressed(move |_, _, x, y| {
                 println!("DEBUG: Right-click triggered on default color media card.");
-                popover_clone.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+                popover_clone
+                    .set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
                 popover_clone.popup();
             });
             card.add_controller(gesture);
@@ -2973,7 +3059,16 @@ pub fn build_ui(app: &Application) {
                 live_slides_list.remove(&child);
             }
 
-            let (live_slides, live_active_index, live_title, blackout_val, logo_val, clearout_val, go_live_val, logo_image_path_val) = {
+            let (
+                live_slides,
+                live_active_index,
+                live_title,
+                blackout_val,
+                logo_val,
+                clearout_val,
+                go_live_val,
+                logo_image_path_val,
+            ) = {
                 let s = state.borrow();
                 (
                     s.live_slides.clone(),
@@ -3095,7 +3190,17 @@ pub fn build_ui(app: &Application) {
                 clear_btn.remove_css_class("toolbar-button-active");
             }
 
-            let (bg_type, bg_path, font_size, scale, align, shadow, lower_bar_height, default_song_bg_type, default_song_bg_val) = {
+            let (
+                bg_type,
+                bg_path,
+                font_size,
+                scale,
+                align,
+                shadow,
+                lower_bar_height,
+                default_song_bg_type,
+                default_song_bg_val,
+            ) = {
                 let s = state.borrow();
                 let (bt, bp, fs, sc, al, sh, lbh) = if let Some(ref stanzas) = s.live_song_stanzas {
                     if let Some(active_idx) = s.live_active_index {
@@ -3110,15 +3215,49 @@ pub fn build_ui(app: &Application) {
                                 stanza.lower_bar_height,
                             )
                         } else {
-                            (String::new(), None, 40.0, 1.0, "center".to_string(), false, 0.35)
+                            (
+                                String::new(),
+                                None,
+                                40.0,
+                                1.0,
+                                "center".to_string(),
+                                false,
+                                0.35,
+                            )
                         }
                     } else {
-                        (String::new(), None, 40.0, 1.0, "center".to_string(), false, 0.35)
+                        (
+                            String::new(),
+                            None,
+                            40.0,
+                            1.0,
+                            "center".to_string(),
+                            false,
+                            0.35,
+                        )
                     }
                 } else {
-                    (String::new(), None, 40.0, 1.0, "center".to_string(), false, 0.35)
+                    (
+                        String::new(),
+                        None,
+                        40.0,
+                        1.0,
+                        "center".to_string(),
+                        false,
+                        0.35,
+                    )
                 };
-                (bt, bp, fs, sc, al, sh, lbh, s.default_song_bg_type.clone(), s.default_song_bg_val.clone())
+                (
+                    bt,
+                    bp,
+                    fs,
+                    sc,
+                    al,
+                    sh,
+                    lbh,
+                    s.default_song_bg_type.clone(),
+                    s.default_song_bg_val.clone(),
+                )
             };
 
             ndi_out.update_slide(
@@ -3216,11 +3355,14 @@ pub fn build_ui(app: &Application) {
                 // Push matching verse to live if requested
                 if push_to_live && !s.verses.is_empty() {
                     let target_v_idx = if let Some(target_v) = verse {
-                        s.verses.iter()
+                        s.verses
+                            .iter()
                             .position(|v| {
                                 if v.translation == s.selected_translation {
                                     if let Some(colon_idx) = v.reference.rfind(':') {
-                                        if let Ok(v_num) = v.reference[colon_idx + 1..].parse::<i32>() {
+                                        if let Ok(v_num) =
+                                            v.reference[colon_idx + 1..].parse::<i32>()
+                                        {
                                             return v_num == target_v;
                                         }
                                     }
@@ -3478,7 +3620,10 @@ pub fn build_ui(app: &Application) {
                 s.preview_song_stanzas = Some(song.stanzas.clone());
 
                 if !song.stanzas.is_empty() {
-                    preview_title_label.set_text(&format!("Preview - {} ({})", song.title, song.stanzas[0].name));
+                    preview_title_label.set_text(&format!(
+                        "Preview - {} ({})",
+                        song.title, song.stanzas[0].name
+                    ));
                     s.preview_header = format!("{} - {}", song.title, song.stanzas[0].name);
                     s.preview_body = song.stanzas[0].lyrics.clone();
                 } else {
@@ -3533,11 +3678,8 @@ pub fn build_ui(app: &Application) {
                 if let Some(stanza) = song_data.stanzas.get(row_idx) {
                     let title = &song_data.title;
                     let text = stanza.lyrics.clone();
-                    preview_title_label_clone.set_text(&format!(
-                        "Preview - {} ({})",
-                        title,
-                        stanza.name
-                    ));
+                    preview_title_label_clone
+                        .set_text(&format!("Preview - {} ({})", title, stanza.name));
                     s.preview_header = format!("{} - {}", title, stanza.name);
                     s.preview_body = text;
                     s.preview_song_stanzas = Some(song_data.stanzas.clone());
@@ -3782,7 +3924,7 @@ pub fn build_ui(app: &Application) {
 
     let window = ApplicationWindow::builder()
         .application(app)
-        .title("ChurchPresenter - GTK4 Edition")
+        .title("ChurchPresenter")
         .default_width(1280)
         .default_height(1000)
         .build();
@@ -3834,8 +3976,8 @@ fn show_song_editor_window(
     use crate::models::{Song, SongStanza};
     use gtk::prelude::*;
     use gtk::{
-        Box, Button, CheckButton, DropDown, Entry, Label, ListBox, ListBoxRow, Orientation,
-        Scale, ScrolledWindow, TextView, Window,
+        Box, Button, CheckButton, DropDown, Entry, Label, ListBox, ListBoxRow, Orientation, Scale,
+        ScrolledWindow, TextView, Window,
     };
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -3874,7 +4016,11 @@ fn show_song_editor_window(
 
     // Create the window
     let editor_win = Window::builder()
-        .title(if song_id.is_some() { "Edit Song" } else { "Create Song" })
+        .title(if song_id.is_some() {
+            "Edit Song"
+        } else {
+            "Create Song"
+        })
         .modal(true)
         .default_width(960)
         .default_height(700)
@@ -3974,12 +4120,18 @@ fn show_song_editor_window(
         .build();
     right_panel.append(&editor_inputs);
 
-    let name_lbl = Label::builder().label("Stanza Header (e.g. Verse 1, Chorus):").xalign(0.0).build();
+    let name_lbl = Label::builder()
+        .label("Stanza Header (e.g. Verse 1, Chorus):")
+        .xalign(0.0)
+        .build();
     let name_entry = Entry::builder().build();
     editor_inputs.append(&name_lbl);
     editor_inputs.append(&name_entry);
 
-    let lyrics_lbl = Label::builder().label("Lyrics Content:").xalign(0.0).build();
+    let lyrics_lbl = Label::builder()
+        .label("Lyrics Content:")
+        .xalign(0.0)
+        .build();
     let lyrics_text_view = TextView::builder()
         .vexpand(true)
         .wrap_mode(gtk::WrapMode::Word)
@@ -4019,7 +4171,10 @@ fn show_song_editor_window(
         .build();
     design_panel.append(&controls_box);
 
-    let bg_lbl = Label::builder().label("Background Type:").xalign(0.0).build();
+    let bg_lbl = Label::builder()
+        .label("Background Type:")
+        .xalign(0.0)
+        .build();
     let bg_dropdown = DropDown::from_strings(&["Transparent", "Lower Transparent", "Custom Image"]);
     controls_box.append(&bg_lbl);
     controls_box.append(&bg_dropdown);
@@ -4050,7 +4205,10 @@ fn show_song_editor_window(
     controls_box.append(&text_scale_lbl);
     controls_box.append(&text_scale_scale);
 
-    let align_lbl = Label::builder().label("Text Alignment:").xalign(0.0).build();
+    let align_lbl = Label::builder()
+        .label("Text Alignment:")
+        .xalign(0.0)
+        .build();
     let align_dropdown = DropDown::from_strings(&["Center", "Left", "Right"]);
     controls_box.append(&align_lbl);
     controls_box.append(&align_dropdown);
@@ -4205,9 +4363,13 @@ fn show_song_editor_window(
             let drag_start_bar_height = drag_start_bar_height.clone();
             let drag_active = drag_active.clone();
             move |_, _offset_x, offset_y| {
-                if !*drag_active.borrow() { return; }
+                if !*drag_active.borrow() {
+                    return;
+                }
                 let h = canvas_da.height() as f64;
-                if h <= 0.0 { return; }
+                if h <= 0.0 {
+                    return;
+                }
                 let start_frac = *drag_start_bar_height.borrow();
                 // Dragging UP (negative offset_y) → bar gets taller
                 let delta_frac = -offset_y / h;
@@ -4318,11 +4480,15 @@ fn show_song_editor_window(
             let song = song_state.borrow();
             for (idx, stanza) in song.stanzas.iter().enumerate() {
                 let row_lbl = Label::builder()
-                    .label(&format!("{}: {}", stanza.name, stanza.lyrics.chars().take(20).collect::<String>()))
+                    .label(&format!(
+                        "{}: {}",
+                        stanza.name,
+                        stanza.lyrics.chars().take(20).collect::<String>()
+                    ))
                     .xalign(0.0)
                     .build();
                 row_lbl.add_css_class("sidebar-row");
-                
+
                 let row = ListBoxRow::builder().child(&row_lbl).build();
                 stanzas_list_box.append(&row);
 
@@ -4366,7 +4532,9 @@ fn show_song_editor_window(
         let is_updating_controls = is_updating_controls.clone();
         let stanzas_list_box = stanzas_list_box.clone();
         move |entry| {
-            if *is_updating_controls.borrow() { return; }
+            if *is_updating_controls.borrow() {
+                return;
+            }
             let mut song = song_state.borrow_mut();
             let idx = *active_stanza_idx.borrow();
             if let Some(stanza) = song.stanzas.get_mut(idx) {
@@ -4377,7 +4545,11 @@ fn show_song_editor_window(
                 if let Some(label) = row.child().and_then(|c| c.downcast::<Label>().ok()) {
                     let song = song_state.borrow();
                     let stanza = &song.stanzas[idx];
-                    label.set_text(&format!("{}: {}", stanza.name, stanza.lyrics.chars().take(20).collect::<String>()));
+                    label.set_text(&format!(
+                        "{}: {}",
+                        stanza.name,
+                        stanza.lyrics.chars().take(20).collect::<String>()
+                    ));
                 }
             }
         }
@@ -4390,8 +4562,12 @@ fn show_song_editor_window(
         let canvas_drawing_area = canvas_drawing_area.clone();
         let stanzas_list_box = stanzas_list_box.clone();
         move |buf| {
-            if *is_updating_controls.borrow() { return; }
-            let text = buf.text(&buf.start_iter(), &buf.end_iter(), false).to_string();
+            if *is_updating_controls.borrow() {
+                return;
+            }
+            let text = buf
+                .text(&buf.start_iter(), &buf.end_iter(), false)
+                .to_string();
             let mut song = song_state.borrow_mut();
             let idx = *active_stanza_idx.borrow();
             if let Some(stanza) = song.stanzas.get_mut(idx) {
@@ -4403,7 +4579,11 @@ fn show_song_editor_window(
                 if let Some(label) = row.child().and_then(|c| c.downcast::<Label>().ok()) {
                     let song = song_state.borrow();
                     let stanza = &song.stanzas[idx];
-                    label.set_text(&format!("{}: {}", stanza.name, stanza.lyrics.chars().take(20).collect::<String>()));
+                    label.set_text(&format!(
+                        "{}: {}",
+                        stanza.name,
+                        stanza.lyrics.chars().take(20).collect::<String>()
+                    ));
                 }
             }
         }
@@ -4417,7 +4597,9 @@ fn show_song_editor_window(
         let bg_path_row = bg_browse_row.clone();
         let push_history = push_history.clone();
         move |dd| {
-            if *is_updating_controls.borrow() { return; }
+            if *is_updating_controls.borrow() {
+                return;
+            }
             push_history();
             let sel = dd.selected();
             let bg_type = match sel {
@@ -4493,7 +4675,9 @@ fn show_song_editor_window(
         let is_updating_controls = is_updating_controls.clone();
         let canvas_drawing_area = canvas_drawing_area.clone();
         move |scale| {
-            if *is_updating_controls.borrow() { return; }
+            if *is_updating_controls.borrow() {
+                return;
+            }
             let mut song = song_state.borrow_mut();
             let idx = *active_stanza_idx.borrow();
             if let Some(stanza) = song.stanzas.get_mut(idx) {
@@ -4510,7 +4694,9 @@ fn show_song_editor_window(
         let is_updating_controls = is_updating_controls.clone();
         let canvas_drawing_area = canvas_drawing_area.clone();
         move |scale| {
-            if *is_updating_controls.borrow() { return; }
+            if *is_updating_controls.borrow() {
+                return;
+            }
             let mut song = song_state.borrow_mut();
             let idx = *active_stanza_idx.borrow();
             if let Some(stanza) = song.stanzas.get_mut(idx) {
@@ -4528,7 +4714,9 @@ fn show_song_editor_window(
         let canvas_drawing_area = canvas_drawing_area.clone();
         let push_history = push_history.clone();
         move |dd| {
-            if *is_updating_controls.borrow() { return; }
+            if *is_updating_controls.borrow() {
+                return;
+            }
             push_history();
             let sel = dd.selected();
             let align = match sel {
@@ -4554,7 +4742,9 @@ fn show_song_editor_window(
         let canvas_drawing_area = canvas_drawing_area.clone();
         let push_history = push_history.clone();
         move |cb| {
-            if *is_updating_controls.borrow() { return; }
+            if *is_updating_controls.borrow() {
+                return;
+            }
             push_history();
             let mut song = song_state.borrow_mut();
             let idx = *active_stanza_idx.borrow();
@@ -4579,9 +4769,11 @@ fn show_song_editor_window(
     undo_btn.connect_clicked(move |_| {
         let mut undo = undo_stack_c.borrow_mut();
         if let Some(prev_state) = undo.pop() {
-            redo_stack_c.borrow_mut().push(song_state_c.borrow().clone());
+            redo_stack_c
+                .borrow_mut()
+                .push(song_state_c.borrow().clone());
             *song_state_c.borrow_mut() = prev_state;
-            
+
             let idx = *active_stanza_idx_c.borrow();
             let active_idx = if idx >= song_state_c.borrow().stanzas.len() {
                 song_state_c.borrow().stanzas.len().saturating_sub(1)
@@ -4593,7 +4785,11 @@ fn show_song_editor_window(
             redo_btn_c.set_sensitive(true);
 
             drop(undo);
-            let pop_fn = populate_stanzas_list_rc_c.borrow().as_ref().unwrap().clone();
+            let pop_fn = populate_stanzas_list_rc_c
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .clone();
             pop_fn(active_idx);
             update_inputs_c();
         }
@@ -4611,7 +4807,9 @@ fn show_song_editor_window(
     redo_btn.connect_clicked(move |_| {
         let mut redo = redo_stack_c2.borrow_mut();
         if let Some(next_state) = redo.pop() {
-            undo_stack_c2.borrow_mut().push(song_state_c2.borrow().clone());
+            undo_stack_c2
+                .borrow_mut()
+                .push(song_state_c2.borrow().clone());
             *song_state_c2.borrow_mut() = next_state;
 
             let idx = *active_stanza_idx_c2.borrow();
@@ -4625,7 +4823,11 @@ fn show_song_editor_window(
             redo_btn_c2.set_sensitive(!redo.is_empty());
 
             drop(redo);
-            let pop_fn = populate_stanzas_list_rc_c2.borrow().as_ref().unwrap().clone();
+            let pop_fn = populate_stanzas_list_rc_c2
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .clone();
             pop_fn(active_idx);
             update_inputs_c2();
         }
@@ -4651,7 +4853,11 @@ fn show_song_editor_window(
             lower_bar_height: 0.35,
         });
         drop(song);
-        let pop_fn = populate_stanzas_list_rc_c.borrow().as_ref().unwrap().clone();
+        let pop_fn = populate_stanzas_list_rc_c
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .clone();
         pop_fn(new_idx);
     });
 
@@ -4667,7 +4873,11 @@ fn show_song_editor_window(
             let mut song = song_state_c.borrow_mut();
             song.stanzas.swap(idx, idx - 1);
             drop(song);
-            let pop_fn = populate_stanzas_list_rc_c.borrow().as_ref().unwrap().clone();
+            let pop_fn = populate_stanzas_list_rc_c
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .clone();
             pop_fn(idx - 1);
         }
     });
@@ -4685,7 +4895,11 @@ fn show_song_editor_window(
             let mut song = song_state_c.borrow_mut();
             song.stanzas.swap(idx, idx + 1);
             drop(song);
-            let pop_fn = populate_stanzas_list_rc_c.borrow().as_ref().unwrap().clone();
+            let pop_fn = populate_stanzas_list_rc_c
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .clone();
             pop_fn(idx + 1);
         }
     });
@@ -4705,7 +4919,11 @@ fn show_song_editor_window(
             song.stanzas.remove(idx);
             drop(song);
             let next_idx = if idx >= len - 1 { len - 2 } else { idx };
-            let pop_fn = populate_stanzas_list_rc_c.borrow().as_ref().unwrap().clone();
+            let pop_fn = populate_stanzas_list_rc_c
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .clone();
             pop_fn(next_idx);
             update_inputs_c();
         }
@@ -4733,7 +4951,7 @@ fn show_song_editor_window(
 
         let mut song = song_state_save.borrow().clone();
         song.title = title;
-        
+
         crate::db::save_song(&song);
 
         // Reload songs list in AppState

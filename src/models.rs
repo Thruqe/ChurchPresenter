@@ -9,11 +9,11 @@ pub struct Verse {
 pub struct SongStanza {
     pub name: String,
     pub lyrics: String,
-    pub bg_type: String,      // "transparent", "lower_transparent", "image"
+    pub bg_type: String, // "transparent", "lower_transparent", "image"
     pub bg_path: Option<String>,
     pub font_size: f64,
     pub scale: f64,
-    pub align: String,        // "left", "right", "center"
+    pub align: String, // "left", "right", "center"
     pub shadow: bool,
     pub lower_bar_height: f64, // fraction 0.0–1.0 of canvas height (only used for lower_transparent)
 }

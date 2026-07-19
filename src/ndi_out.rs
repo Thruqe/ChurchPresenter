@@ -1,4 +1,4 @@
-use crate::{println, eprintln};
+use crate::{eprintln, println};
 use gtk::cairo::{Context, FontSlant, FontWeight, Format, ImageSurface};
 use gtk::gdk_pixbuf::Pixbuf;
 use gtk::prelude::*;
@@ -151,7 +151,11 @@ fn draw_song_text_cairo(
     cr.set_font_size(actual_font_size);
 
     let (text_min_y, text_max_y, margin_x) = if bg_type == "lower_transparent" {
-        (height - height * lower_bar_height + 10.0, height - 10.0, width * 0.05)
+        (
+            height - height * lower_bar_height + 10.0,
+            height - 10.0,
+            width * 0.05,
+        )
     } else {
         (height * 0.1, height * 0.9, width * 0.075)
     };
@@ -446,7 +450,10 @@ impl NdiOutput {
                     if slide_changed || is_animating || time_for_keep_alive {
                         // Apply default song background if stanza background is transparent
                         let (res_bg_type, res_bg_path) = if slide.bg_type == "transparent" {
-                            (slide.default_song_bg_type.as_str(), slide.default_song_bg_val.as_deref())
+                            (
+                                slide.default_song_bg_type.as_str(),
+                                slide.default_song_bg_val.as_deref(),
+                            )
                         } else {
                             (slide.bg_type.as_str(), slide.bg_path.as_deref())
                         };
@@ -455,7 +462,14 @@ impl NdiOutput {
                             slide.logo_image_path.as_deref().unwrap_or("")
                         } else if res_bg_type == "image" {
                             res_bg_path.unwrap_or("")
-                        } else if (res_bg_type == "color" || res_bg_type == "theme") && res_bg_path.map(|p| std::path::Path::new(p).exists() && std::path::Path::new(p).is_file()).unwrap_or(false) {
+                        } else if (res_bg_type == "color" || res_bg_type == "theme")
+                            && res_bg_path
+                                .map(|p| {
+                                    std::path::Path::new(p).exists()
+                                        && std::path::Path::new(p).is_file()
+                                })
+                                .unwrap_or(false)
+                        {
                             res_bg_path.unwrap_or("")
                         } else if res_bg_type.is_empty() && !slide.theme.is_empty() {
                             &slide.theme

@@ -1,5 +1,5 @@
+use crate::models::{Song, SongStanza, Verse};
 use rusqlite::{Connection, params};
-use crate::models::{Verse, Song, SongStanza};
 
 pub fn init_songs_tables() {
     if let Ok(conn) = Connection::open(get_data_db_path()) {
@@ -85,8 +85,14 @@ pub fn get_songs() -> Vec<Song> {
 pub fn save_song(song: &Song) -> i64 {
     if let Ok(conn) = Connection::open(get_data_db_path()) {
         if let Some(song_id) = song.id {
-            let _ = conn.execute("UPDATE songs SET title = ? WHERE id = ?", params![song.title, song_id]);
-            let _ = conn.execute("DELETE FROM song_stanzas WHERE song_id = ?", params![song_id]);
+            let _ = conn.execute(
+                "UPDATE songs SET title = ? WHERE id = ?",
+                params![song.title, song_id],
+            );
+            let _ = conn.execute(
+                "DELETE FROM song_stanzas WHERE song_id = ?",
+                params![song_id],
+            );
             for (idx, stanza) in song.stanzas.iter().enumerate() {
                 let _ = conn.execute(
                     "INSERT INTO song_stanzas (song_id, name, lyrics, bg_type, bg_path, font_size, scale, align, shadow, order_index, lower_bar_height)
@@ -308,7 +314,11 @@ pub fn get_all_books() -> Vec<String> {
         return vec![];
     }
     let conn = conn_res.unwrap();
-    let mut stmt = if let Ok(s) = conn.prepare("SELECT name FROM book ORDER BY id") { s } else { return vec![]; };
+    let mut stmt = if let Ok(s) = conn.prepare("SELECT name FROM book ORDER BY id") {
+        s
+    } else {
+        return vec![];
+    };
     let rows_res = stmt.query_map([], |row| row.get::<_, String>(0));
     if let Ok(rows) = rows_res {
         return rows.filter_map(|r| r.ok()).collect();
@@ -476,4 +486,3 @@ pub fn delete_song(song_id: i64) {
         let _ = conn.execute("DELETE FROM songs WHERE id = ?", params![song_id]);
     }
 }
-

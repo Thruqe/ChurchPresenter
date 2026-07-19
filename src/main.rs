@@ -1,10 +1,10 @@
-mod models;
 mod db;
-mod ui;
+mod models;
 mod ndi_out;
+mod ui;
 
-use gtk::prelude::*;
 use gtk::Application;
+use gtk::prelude::*;
 
 const APP_ID: &str = "org.thruqe.gtkapp";
 
