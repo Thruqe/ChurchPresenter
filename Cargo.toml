@@ -24,3 +24,4 @@ lto = true             # Enable full Link-Time Optimization across all crates
 codegen-units = 1      # Compile with a single codegen unit to enable maximum optimizations
 panic = "abort"        # Abort on panic to remove stack unwinding code
 strip = true           # Strip all debug symbols and symbols table
+rpath = true

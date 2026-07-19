@@ -20,7 +20,7 @@ jobs:
       - name: Install GTK4 dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev build-essential pkg-config
+          sudo apt-get install -y libgtk-4-dev build-essential pkg-config rpm
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -37,7 +37,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: church-presenter-linux-installer
-          path: church-presenter-setup.deb
+          path: |
+            church-presenter-setup.deb
+            church-presenter-setup.rpm
 
   build-windows:
     name: Build for Windows
@@ -203,9 +205,9 @@ jobs:
         run: |
           mkdir -p ./release-assets
           cp ./dist-linux/church-presenter-setup.deb ./release-assets/church-presenter-linux-amd64.deb
+          cp ./dist-linux/church-presenter-setup.rpm ./release-assets/church-presenter-linux-amd64.rpm
           cp ./dist-windows/church-presenter-setup.exe ./release-assets/church-presenter-windows-amd64-setup.exe
           cp ./dist-macos/church-presenter-setup.dmg ./release-assets/church-presenter-macos-amd64.dmg
-          cp metadata/play.ico ./release-assets/play.ico
 
       - name: Create Release
         if: env.TAG_EXISTS == 'false'
@@ -219,6 +221,6 @@ jobs:
             Installers for all supported platforms are attached below.
           files: |
             ./release-assets/church-presenter-linux-amd64.deb
+            ./release-assets/church-presenter-linux-amd64.rpm
             ./release-assets/church-presenter-windows-amd64-setup.exe
             ./release-assets/church-presenter-macos-amd64.dmg
-            ./release-assets/play.ico
