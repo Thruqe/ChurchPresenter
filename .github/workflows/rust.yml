@@ -77,7 +77,7 @@ jobs:
           makensis /DVERSION=$VERSION metadata/installer.nsi
 
       - name: Sign Executable and Installer (Windows)
-        if: ${{ secrets.SIGNING_CERT_BASE64 != '' }}
+        if: secrets.SIGNING_CERT_BASE64 != ''
         shell: powershell
         run: |
           $certBytes = [System.Convert]::FromBase64String("${{ secrets.SIGNING_CERT_BASE64 }}")
