@@ -9,7 +9,7 @@
 !define COMP_NAME "Thruqe"
 !define APP_VERSION "${VERSION}"
 !define OUT_FILE "church-presenter-setup.exe"
-!define ICON_FILE "metadata\play.ico"
+!define ICON_FILE "metadata/play.ico"
 !define HELP_URL "mailto:danielpeter0039@gmail.com"
 
 # Set compression
