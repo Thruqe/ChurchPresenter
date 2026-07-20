@@ -1,3 +1,7 @@
+// On Windows: use the GUI subsystem so no console window appears when the
+// app is launched. Has no effect on Linux / macOS builds.
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 mod db;
 mod models;
 mod ndi_out;

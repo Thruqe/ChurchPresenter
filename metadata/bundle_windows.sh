@@ -22,10 +22,19 @@ done
 #    missed by ldd on some MSYS2 configurations.
 echo "Copying required runtime DLLs explicitly..."
 REQUIRED_DLLS=(
+    # GCC / C++ runtime
     "libgcc_s_seh-1.dll"
     "libstdc++-6.dll"
+    # Font stack
     "libfontconfig-1.dll"
     "libfreetype-6.dll"
+    # GLib module loader (needed by GTK4 plugin system)
+    "libgmodule-2.0-0.dll"
+    # Internationalization
+    "libintl-8.dll"
+    # Image format codecs
+    "libjpeg-8.dll"
+    "libpng16-16.dll"
 )
 for DLL in "${REQUIRED_DLLS[@]}"; do
     SRC="/mingw64/bin/${DLL}"
