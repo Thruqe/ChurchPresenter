@@ -326,15 +326,67 @@ pub fn get_all_books() -> Vec<String> {
     vec![]
 }
 
+fn is_dir_writable(dir: &std::path::Path) -> bool {
+    if std::fs::create_dir_all(dir).is_err() {
+        return false;
+    }
+    let test_file = dir.join(".write_test");
+    if std::fs::write(&test_file, b"test").is_ok() {
+        let _ = std::fs::remove_file(test_file);
+        true
+    } else {
+        false
+    }
+}
+
+fn get_user_data_dir() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
+            return Some(std::path::PathBuf::from(local_appdata));
+        }
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            return Some(std::path::PathBuf::from(appdata));
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            return Some(std::path::PathBuf::from(home).join("Library").join("Application Support"));
+        }
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
+            return Some(std::path::PathBuf::from(data_home));
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            return Some(std::path::PathBuf::from(home).join(".local").join("share"));
+        }
+    }
+    None
+}
+
 pub fn get_saves_directory() -> std::path::PathBuf {
+    // 1. Try executable's parent saves directory if writable (e.g. portable mode)
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(parent) = exe_path.parent() {
             let saves_dir = parent.join("saves");
-            if std::fs::create_dir_all(&saves_dir).is_ok() {
+            if is_dir_writable(&saves_dir) {
                 return saves_dir;
             }
         }
     }
+
+    // 2. Try standard User Data Directory (installed mode in Program Files / /usr/bin)
+    if let Some(user_data) = get_user_data_dir() {
+        let saves_dir = user_data.join("church-presenter").join("saves");
+        if is_dir_writable(&saves_dir) {
+            return saves_dir;
+        }
+    }
+
+    // 3. Fallback to local saves directory
     let fallback = std::path::PathBuf::from("saves");
     let _ = std::fs::create_dir_all(&fallback);
     fallback
@@ -346,15 +398,51 @@ pub fn get_data_db_path() -> String {
 }
 
 pub fn get_kjv_db_path() -> String {
-    let path = get_saves_directory().join("KJV.sqlite");
-    if !path.exists() {
-        println!("INFO: KJV.sqlite not found. Extracting bundled database...");
-        let bytes = include_bytes!("../KJV.sqlite");
-        if let Err(e) = std::fs::write(&path, bytes) {
-            eprintln!("Error writing KJV.sqlite: {:?}", e);
+    let saves_dir = get_saves_directory();
+    let saves_db = saves_dir.join("KJV.sqlite");
+
+    if saves_db.exists() {
+        return saves_db.to_string_lossy().to_string();
+    }
+
+    // Check executable directory and bundled asset locations
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(parent) = exe_path.parent() {
+            let exe_db = parent.join("KJV.sqlite");
+            if exe_db.exists() {
+                return exe_db.to_string_lossy().to_string();
+            }
+            let exe_saves_db = parent.join("saves").join("KJV.sqlite");
+            if exe_saves_db.exists() {
+                return exe_saves_db.to_string_lossy().to_string();
+            }
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(contents) = parent.parent() {
+                    let res_db = contents.join("Resources").join("KJV.sqlite");
+                    if res_db.exists() {
+                        return res_db.to_string_lossy().to_string();
+                    }
+                }
+            }
         }
     }
-    path.to_string_lossy().to_string()
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let sys_db = std::path::PathBuf::from("/usr/share/church-presenter/KJV.sqlite");
+        if sys_db.exists() {
+            return sys_db.to_string_lossy().to_string();
+        }
+    }
+
+    // Extract embedded database if not found on disk
+    println!("INFO: Extracting bundled KJV.sqlite database...");
+    let bytes = include_bytes!("../KJV.sqlite");
+    if let Err(e) = std::fs::write(&saves_db, bytes) {
+        eprintln!("Error writing KJV.sqlite: {:?}", e);
+    }
+    saves_db.to_string_lossy().to_string()
 }
 
 pub fn init_media_table() {

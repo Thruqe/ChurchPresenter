@@ -24,6 +24,10 @@ cp target/release/church-presenter "$PKG_DIR/usr/bin/"
 # Copy libndi.so.4
 cp target/release/deps/libndi.so.4 "$PKG_DIR/usr/lib/x86_64-linux-gnu/"
 
+# Copy KJV.sqlite
+mkdir -p "$PKG_DIR/usr/share/church-presenter"
+cp KJV.sqlite "$PKG_DIR/usr/share/church-presenter/KJV.sqlite"
+
 # Generate all required icon sizes from the source PNG using ImageMagick
 echo "Generating application icons at all required sizes..."
 for SIZE in "${ICON_SIZES[@]}"; do

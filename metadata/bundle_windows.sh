@@ -118,6 +118,15 @@ mkdir -p "$BUNDLE_DIR/share/icons"
 cp -r /mingw64/share/icons/Adwaita "$BUNDLE_DIR/share/icons/" || true
 cp -r /mingw64/share/icons/hicolor "$BUNDLE_DIR/share/icons/" || true
 
+# ── SQLite database ──────────────────────────────────────────────────────────
+echo "Copying KJV.sqlite database..."
+if [ -f "KJV.sqlite" ]; then
+    cp KJV.sqlite "$BUNDLE_DIR/KJV.sqlite"
+    mkdir -p "$BUNDLE_DIR/saves"
+    cp KJV.sqlite "$BUNDLE_DIR/saves/KJV.sqlite"
+    echo "  Copied KJV.sqlite"
+fi
+
 # ── Application icon ─────────────────────────────────────────────────────────
 echo "Copying application icon..."
 cp metadata/play.ico "$BUNDLE_DIR/church-presenter.ico"

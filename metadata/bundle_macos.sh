@@ -12,6 +12,9 @@ mkdir -p "$APP_DIR/Contents/Resources"
 # Copy binary (note that the renamed binary is now church-presenter)
 cp target/release/church-presenter "$APP_DIR/Contents/MacOS/"
 
+# Copy KJV.sqlite database into Resources
+cp KJV.sqlite "$APP_DIR/Contents/Resources/"
+
 # Generate ICNS from PNG
 echo "Generating ICNS icon..."
 mkdir -p play.iconset
