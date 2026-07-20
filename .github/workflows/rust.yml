@@ -124,8 +124,6 @@ jobs:
         shell: bash
         run: |
           VERSION=$(sed -n "s/^version *= *[\"']\([^\"'\\]*\)[\"']/\1/p" version.toml)
-          # NSIS must find play.ico relative to the .nsi file's directory (metadata/)
-          cp metadata/play.ico metadata/play.ico   # no-op, already there
           makensis -DVERSION=$VERSION metadata/installer.nsi
 
       - name: Sign Executable and Installer (Windows)
