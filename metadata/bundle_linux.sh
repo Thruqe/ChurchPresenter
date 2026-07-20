@@ -27,9 +27,14 @@ cp target/release/deps/libndi.so.4 "$PKG_DIR/usr/lib/x86_64-linux-gnu/"
 # Generate all required icon sizes from the source PNG using ImageMagick
 echo "Generating application icons at all required sizes..."
 for SIZE in "${ICON_SIZES[@]}"; do
-    convert metadata/play.png \
-        -resize "${SIZE}x${SIZE}" \
-        "$PKG_DIR/usr/share/icons/hicolor/${SIZE}x${SIZE}/apps/church-presenter.png"
+    DEST="$PKG_DIR/usr/share/icons/hicolor/${SIZE}x${SIZE}/apps/church-presenter.png"
+    if command -v rsvg-convert >/dev/null 2>&1 && [ -f metadata/play.svg ]; then
+        # Preferred: render direct from SVG for pixel-perfect quality at every size
+        rsvg-convert -w "$SIZE" -h "$SIZE" metadata/play.svg -o "$DEST"
+    else
+        # Fallback: resize from the pre-rendered 512px PNG
+        convert metadata/play.png -resize "${SIZE}x${SIZE}" "$DEST"
+    fi
 done
 
 # Also copy a 48x48 version to /usr/share/pixmaps for legacy compatibility

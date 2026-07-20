@@ -10,12 +10,30 @@ mkdir -p "$BUNDLE_DIR"
 cp target/release/church-presenter.exe "$BUNDLE_DIR/"
 
 # Copy dependencies
-# We use ldd to find all dlls in /mingw64/bin and copy them
-echo "Copying DLL dependencies..."
+# 1. Use ldd to auto-discover all required mingw64 DLLs
+echo "Copying DLL dependencies (ldd)..."
 ldd target/release/church-presenter.exe | grep -i "/mingw64/bin" | awk '{print $3}' | while read -r dll; do
-    # Convert windows path from ldd if needed, though in msys2 it is usually /mingw64/...
     if [ -f "$dll" ]; then
         cp "$dll" "$BUNDLE_DIR/"
+    fi
+done
+
+# 2. Explicitly copy the four runtime DLLs that are always required but may be
+#    missed by ldd on some MSYS2 configurations.
+echo "Copying required runtime DLLs explicitly..."
+REQUIRED_DLLS=(
+    "libgcc_s_seh-1.dll"
+    "libstdc++-6.dll"
+    "libfontconfig-1.dll"
+    "libfreetype-6.dll"
+)
+for DLL in "${REQUIRED_DLLS[@]}"; do
+    SRC="/mingw64/bin/${DLL}"
+    if [ -f "$SRC" ]; then
+        cp "$SRC" "$BUNDLE_DIR/"
+        echo "  Copied: $DLL"
+    else
+        echo "WARNING: $DLL not found at $SRC — bundle may be incomplete!"
     fi
 done
 
@@ -66,12 +84,10 @@ mkdir -p "$BUNDLE_DIR/share/icons"
 cp -r /mingw64/share/icons/Adwaita "$BUNDLE_DIR/share/icons/" || true
 cp -r /mingw64/share/icons/hicolor "$BUNDLE_DIR/share/icons/" || true
 
-# Bundle the application icon into hicolor so Windows Explorer and
-# the taskbar can display it at every required size.
+# Bundle the application icon.
+# Drop the multi-resolution .ico at the bundle root so Inno Setup can reference
+# it directly, and Windows Explorer / taskbar / Alt+Tab all use it.
 echo "Copying application icon..."
-mkdir -p "$BUNDLE_DIR/share/icons/hicolor/scalable/apps"
-cp metadata/play.ico "$BUNDLE_DIR/share/icons/hicolor/scalable/apps/church-presenter.ico"
-# Also drop the .ico at the root so the installer can reference it directly
 cp metadata/play.ico "$BUNDLE_DIR/church-presenter.ico"
 
 echo "Bundle created successfully."

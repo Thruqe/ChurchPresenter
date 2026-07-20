@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background: dark navy top → deep purple bottom -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#0d0b22"/>
+      <stop offset="55%"  stop-color="#1e1556"/>
+      <stop offset="100%" stop-color="#2e1a6e"/>
+    </linearGradient>
+
+    <!-- Subtle top-edge inner highlight (glassmorphism rim) -->
+    <linearGradient id="rimGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Gold cross: bright yellow top → warm amber bottom -->
+    <linearGradient id="crossGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#ffe566"/>
+      <stop offset="40%"  stop-color="#ffb300"/>
+      <stop offset="100%" stop-color="#e06000"/>
+    </linearGradient>
+
+    <!-- Ambient purple glow behind the cross -->
+    <radialGradient id="ambiGlow" cx="50%" cy="44%" r="46%">
+      <stop offset="0%"   stop-color="#7c4dff" stop-opacity="0.55"/>
+      <stop offset="70%"  stop-color="#4a2090" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#4a2090" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Orange halo tight around cross centre -->
+    <radialGradient id="crossHalo" cx="50%" cy="40%" r="28%">
+      <stop offset="0%"   stop-color="#ffb300" stop-opacity="0.50"/>
+      <stop offset="100%" stop-color="#ffb300" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Glow filter for the cross bars -->
+    <filter id="crossGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Soft drop shadow for the screen frame -->
+    <filter id="frameShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="6"
+                    flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- ── Background rounded square ───────────────────────────────────── -->
+  <rect width="512" height="512" rx="108" ry="108" fill="url(#bgGrad)"/>
+
+  <!-- Top rim highlight -->
+  <rect width="512" height="230" rx="108" ry="108" fill="url(#rimGrad)"/>
+
+  <!-- ── Ambient glows ────────────────────────────────────────────────── -->
+  <ellipse cx="256" cy="226" rx="230" ry="210" fill="url(#ambiGlow)"/>
+  <ellipse cx="256" cy="210" rx="130" ry="115" fill="url(#crossHalo)"/>
+
+  <!-- ── Presentation screen (glass panel behind cross) ──────────────── -->
+  <rect x="136" y="226" width="240" height="176" rx="10" ry="10"
+        fill="#ffffff" fill-opacity="0.05"
+        stroke="#ffffff" stroke-opacity="0.18" stroke-width="3"
+        filter="url(#frameShadow)"/>
+
+  <!-- Easel legs -->
+  <line x1="208" y1="402" x2="176" y2="436"
+        stroke="#9575cd" stroke-width="5" stroke-linecap="round" stroke-opacity="0.55"/>
+  <line x1="304" y1="402" x2="336" y2="436"
+        stroke="#9575cd" stroke-width="5" stroke-linecap="round" stroke-opacity="0.55"/>
+
+  <!-- ── Cross ─────────────────────────────────────────────────────────── -->
+  <!-- Vertical bar -->
+  <rect x="228" y="96" width="56" height="304" rx="12" ry="12"
+        fill="url(#crossGrad)" filter="url(#crossGlow)"/>
+  <!-- Horizontal bar -->
+  <rect x="140" y="194" width="232" height="56" rx="12" ry="12"
+        fill="url(#crossGrad)" filter="url(#crossGlow)"/>
+
+  <!-- ── Broadcast arcs ─────────────────────────────────────────────── -->
+  <g fill="none" stroke-linecap="round">
+    <!-- innermost arc -->
+    <path d="M 222 458 A 34 34 0 0 1 290 458"
+          stroke="#b39ddb" stroke-width="6" stroke-opacity="0.80"/>
+    <!-- middle arc -->
+    <path d="M 200 468 A 56 56 0 0 1 312 468"
+          stroke="#9575cd" stroke-width="4.5" stroke-opacity="0.55"/>
+    <!-- outer arc -->
+    <path d="M 178 478 A 78 78 0 0 1 334 478"
+          stroke="#7c4dff" stroke-width="3" stroke-opacity="0.35"/>
+  </g>
+  <!-- Broadcast origin dot -->
+  <circle cx="256" cy="460" r="7" fill="#ce93d8" opacity="0.9"/>
+</svg>

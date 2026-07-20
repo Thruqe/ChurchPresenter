@@ -22,7 +22,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libgtk-4-dev build-essential pkg-config rpm \
-            imagemagick
+            imagemagick librsvg2-bin
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -115,16 +115,18 @@ jobs:
         shell: msys2 {0}
         run: ./metadata/bundle_windows.sh
 
-      - name: Install NSIS
+      - name: Install Inno Setup
+        shell: powershell
         run: |
-          choco install nsis -y
-          Add-Content $env:GITHUB_PATH "C:\Program Files (x86)\NSIS"
+          choco install innosetup -y
+          # Make ISCC available on PATH for subsequent bash steps
+          Add-Content $env:GITHUB_PATH "C:\Program Files (x86)\Inno Setup 6"
 
-      - name: Compile Windows Installer
+      - name: Compile Windows Installer (Inno Setup)
         shell: bash
         run: |
           VERSION=$(sed -n "s/^version *= *[\"']\([^\"'\\]*\)[\"']/\1/p" version.toml)
-          makensis -DVERSION=$VERSION metadata/installer.nsi
+          ISCC //DMyAppVersion="$VERSION" metadata/installer.iss
 
       - name: Sign Executable and Installer (Windows)
         shell: powershell
@@ -139,9 +141,9 @@ jobs:
             if ($signtool) {
               # Sign binary inside bundle first
               & $signtool.FullName sign /f cert.pfx /p $env:SIGNING_CERT_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 dist-windows-bundle\church-presenter.exe
-              # Recompile installer with signed binary
+              # Recompile installer with signed binary (Inno Setup)
               $version = (Get-Content version.toml | Select-String -Pattern 'version\s*=\s*"(.*)"') -replace 'version\s*=\s*"(.*)"', '$1'
-              makensis -DVERSION=$version metadata/installer.nsi
+              ISCC /DMyAppVersion=$version metadata/installer.iss
               # Sign the final setup installer
               & $signtool.FullName sign /f cert.pfx /p $env:SIGNING_CERT_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 church-presenter-setup.exe
             } else {
