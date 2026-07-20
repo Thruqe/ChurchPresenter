@@ -68,6 +68,7 @@ update-desktop-database /usr/share/applications 2>/dev/null || true
 /usr/share/icons/hicolor/512x512/apps/church-presenter.png
 
 %changelog
-* Sun Jul 19 2026 Daniel Peter <danielpeter0039@gmail.com> - 2.0.0-1
-- Bundle all hicolor icon sizes (16–512 px) and add post-install cache refresh
-- Initial release with bundled libndi.so.4 and GTK4 assets
+* Sun Jul 20 2026 Daniel Peter <danielpeter0039@gmail.com> - 2.7.0-1
+- New media-focused app logo (SVG → multi-size ICO/PNG)
+- Switch Windows installer to Inno Setup with modern wizard UI
+- Bundle all required GTK4 and runtime DLLs explicitly

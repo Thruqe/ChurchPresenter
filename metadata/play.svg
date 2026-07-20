@@ -1,96 +1,118 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <!-- Background: dark navy top → deep purple bottom -->
-    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%"   stop-color="#0d0b22"/>
-      <stop offset="55%"  stop-color="#1e1556"/>
-      <stop offset="100%" stop-color="#2e1a6e"/>
-    </linearGradient>
-
-    <!-- Subtle top-edge inner highlight (glassmorphism rim) -->
-    <linearGradient id="rimGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.10"/>
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
-    </linearGradient>
-
-    <!-- Gold cross: bright yellow top → warm amber bottom -->
-    <linearGradient id="crossGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%"   stop-color="#ffe566"/>
-      <stop offset="40%"  stop-color="#ffb300"/>
-      <stop offset="100%" stop-color="#e06000"/>
-    </linearGradient>
-
-    <!-- Ambient purple glow behind the cross -->
-    <radialGradient id="ambiGlow" cx="50%" cy="44%" r="46%">
-      <stop offset="0%"   stop-color="#7c4dff" stop-opacity="0.55"/>
-      <stop offset="70%"  stop-color="#4a2090" stop-opacity="0.25"/>
-      <stop offset="100%" stop-color="#4a2090" stop-opacity="0"/>
+    <!-- Background: near-black with very subtle dark-teal tint -->
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="65%">
+      <stop offset="0%"   stop-color="#0a1f2e"/>
+      <stop offset="60%"  stop-color="#070e14"/>
+      <stop offset="100%" stop-color="#040a10"/>
     </radialGradient>
 
-    <!-- Orange halo tight around cross centre -->
-    <radialGradient id="crossHalo" cx="50%" cy="40%" r="28%">
-      <stop offset="0%"   stop-color="#ffb300" stop-opacity="0.50"/>
-      <stop offset="100%" stop-color="#ffb300" stop-opacity="0"/>
+    <!-- Screen border glow: cyan → blue -->
+    <linearGradient id="borderGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#00e5ff"/>
+      <stop offset="100%" stop-color="#2979ff"/>
+    </linearGradient>
+
+    <!-- Screen inner surface: dark with subtle teal center -->
+    <radialGradient id="screenInner" cx="40%" cy="50%" r="55%">
+      <stop offset="0%"   stop-color="#0d2233"/>
+      <stop offset="100%" stop-color="#060d13"/>
     </radialGradient>
 
-    <!-- Glow filter for the cross bars -->
-    <filter id="crossGlow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="blur"/>
+    <!-- Broadcast arc gradient: bright cyan → indigo -->
+    <linearGradient id="arcGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#00e5ff" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#651fff" stop-opacity="0.5"/>
+    </linearGradient>
+
+    <!-- Glow filter for the screen border -->
+    <filter id="borderGlow" x="-8%" y="-8%" width="116%" height="116%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>
       <feMerge>
         <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
 
-    <!-- Soft drop shadow for the screen frame -->
-    <filter id="frameShadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="2" stdDeviation="6"
-                    flood-color="#000000" flood-opacity="0.35"/>
+    <!-- Glow filter for broadcast arcs -->
+    <filter id="arcGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
     </filter>
+
+    <!-- Soft glow for the play triangle -->
+    <filter id="playGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Top rim highlight -->
+    <linearGradient id="rimHighlight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.07"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Clip path for rounded square -->
+    <clipPath id="roundedSquare">
+      <rect width="512" height="512" rx="104" ry="104"/>
+    </clipPath>
   </defs>
 
-  <!-- ── Background rounded square ───────────────────────────────────── -->
-  <rect width="512" height="512" rx="108" ry="108" fill="url(#bgGrad)"/>
+  <!-- ── Background ────────────────────────────────────────────────────── -->
+  <rect width="512" height="512" rx="104" ry="104" fill="url(#bgGlow)"/>
+  <!-- Top glass rim -->
+  <rect width="512" height="200" rx="104" ry="104" fill="url(#rimHighlight)"/>
 
-  <!-- Top rim highlight -->
-  <rect width="512" height="230" rx="108" ry="108" fill="url(#rimGrad)"/>
+  <!-- ── Screen outer glow ring (blurred copy of border) ──────────────── -->
+  <rect x="58" y="118" width="396" height="248" rx="22" ry="22"
+        fill="none"
+        stroke="url(#borderGrad)" stroke-width="10"
+        filter="url(#borderGlow)" opacity="0.65"/>
 
-  <!-- ── Ambient glows ────────────────────────────────────────────────── -->
-  <ellipse cx="256" cy="226" rx="230" ry="210" fill="url(#ambiGlow)"/>
-  <ellipse cx="256" cy="210" rx="130" ry="115" fill="url(#crossHalo)"/>
+  <!-- ── Screen panel ──────────────────────────────────────────────────── -->
+  <!-- Inner surface -->
+  <rect x="64" y="124" width="384" height="236" rx="18" ry="18"
+        fill="url(#screenInner)"/>
+  <!-- Crisp border on top of the surface -->
+  <rect x="64" y="124" width="384" height="236" rx="18" ry="18"
+        fill="none"
+        stroke="url(#borderGrad)" stroke-width="3.5"
+        filter="url(#borderGlow)"/>
 
-  <!-- ── Presentation screen (glass panel behind cross) ──────────────── -->
-  <rect x="136" y="226" width="240" height="176" rx="10" ry="10"
-        fill="#ffffff" fill-opacity="0.05"
-        stroke="#ffffff" stroke-opacity="0.18" stroke-width="3"
-        filter="url(#frameShadow)"/>
-
-  <!-- Easel legs -->
-  <line x1="208" y1="402" x2="176" y2="436"
-        stroke="#9575cd" stroke-width="5" stroke-linecap="round" stroke-opacity="0.55"/>
-  <line x1="304" y1="402" x2="336" y2="436"
-        stroke="#9575cd" stroke-width="5" stroke-linecap="round" stroke-opacity="0.55"/>
-
-  <!-- ── Cross ─────────────────────────────────────────────────────────── -->
-  <!-- Vertical bar -->
-  <rect x="228" y="96" width="56" height="304" rx="12" ry="12"
-        fill="url(#crossGrad)" filter="url(#crossGlow)"/>
-  <!-- Horizontal bar -->
-  <rect x="140" y="194" width="232" height="56" rx="12" ry="12"
-        fill="url(#crossGrad)" filter="url(#crossGlow)"/>
-
-  <!-- ── Broadcast arcs ─────────────────────────────────────────────── -->
-  <g fill="none" stroke-linecap="round">
-    <!-- innermost arc -->
-    <path d="M 222 458 A 34 34 0 0 1 290 458"
-          stroke="#b39ddb" stroke-width="6" stroke-opacity="0.80"/>
-    <!-- middle arc -->
-    <path d="M 200 468 A 56 56 0 0 1 312 468"
-          stroke="#9575cd" stroke-width="4.5" stroke-opacity="0.55"/>
-    <!-- outer arc -->
-    <path d="M 178 478 A 78 78 0 0 1 334 478"
-          stroke="#7c4dff" stroke-width="3" stroke-opacity="0.35"/>
+  <!-- ── Broadcast arcs (right side of play button) ───────────────────── -->
+  <!-- Origin point: tip of play triangle ≈ x=296, y=242 -->
+  <g filter="url(#arcGlow)" fill="none" stroke="url(#arcGrad)" stroke-linecap="round">
+    <!-- Small arc -->
+    <path d="M 300 213 A 30 30 0 0 1 300 271"  stroke-width="7"  opacity="0.95"/>
+    <!-- Medium arc -->
+    <path d="M 308 196 A 50 50 0 0 1 308 288"  stroke-width="5.5" opacity="0.75"/>
+    <!-- Large arc -->
+    <path d="M 318 178 A 70 70 0 0 1 318 306"  stroke-width="4"  opacity="0.50"/>
   </g>
-  <!-- Broadcast origin dot -->
-  <circle cx="256" cy="460" r="7" fill="#ce93d8" opacity="0.9"/>
+
+  <!-- ── Play triangle ─────────────────────────────────────────────────── -->
+  <!-- Glow shadow layer -->
+  <polygon points="152,196 296,242 152,288"
+           fill="#00c8ff" opacity="0.25" filter="url(#playGlow)"/>
+  <!-- Main white triangle -->
+  <polygon points="158,200 292,242 158,284"
+           fill="#ffffff"/>
+
+  <!-- ── Lyrics / text lines at the bottom of the screen ──────────────── -->
+  <rect x="100" y="330" width="240" height="10" rx="5" fill="#ffffff" opacity="0.55"/>
+  <rect x="100" y="348" width="180" height="10" rx="5" fill="#ffffff" opacity="0.35"/>
+
+  <!-- ── Screen stand / base (below the screen) ───────────────────────── -->
+  <rect x="232" y="360" width="48" height="14" rx="4" fill="#0d2233" opacity="0.0"/>
+
+  <!-- ── Bottom connector dots (NDI / broadcast indicator) ────────────── -->
+  <circle cx="456" cy="340" r="6" fill="#00e5ff" opacity="0.80"/>
+  <circle cx="456" cy="340" r="12" fill="#00e5ff" opacity="0.18"/>
+  <circle cx="456" cy="340" r="20" fill="#00e5ff" opacity="0.07"/>
 </svg>
