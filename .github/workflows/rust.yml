@@ -66,29 +66,45 @@ jobs:
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-gcc
 
-      - name: Install NDI SDK (Windows)
+      - name: Install NDI Runtime (Windows)
         shell: powershell
         run: |
-          # Download the NDI 6 SDK installer from the official Vizrt CDN
-          $ndiInstallerUrl = "https://downloads.ndi.tv/SDK/NDI_SDK/NDI%206%20SDK.exe"
-          $ndiInstaller = "$env:TEMP\NDI_SDK_installer.exe"
-          Write-Host "Downloading NDI SDK..."
+          # Use the NDI Runtime installer — smaller than the full SDK and all we
+          # need is Processing.NDI.Lib.x64.dll to bundle with the application.
+          # The installer is InnoSetup-based so we MUST use InnoSetup silent flags
+          # (/VERYSILENT /SUPPRESSMSGBOXES /NORESTART) — NOT the NSIS /S flag.
+          $ndiInstallerUrl = "https://downloads.ndi.tv/SDK/NDI_SDK/NDI%206%20Runtime.exe"
+          $ndiInstaller = "$env:TEMP\NDI_Runtime_installer.exe"
+
+          # Temporarily exclude the temp dir from Defender to prevent scan stalls
+          Add-MpPreference -ExclusionPath $env:TEMP -ErrorAction SilentlyContinue
+
+          Write-Host "Downloading NDI Runtime installer..."
           Invoke-WebRequest -Uri $ndiInstallerUrl -OutFile $ndiInstaller -UseBasicParsing
-          Write-Host "Installing NDI SDK silently..."
-          Start-Process -FilePath $ndiInstaller -ArgumentList "/S" -Wait -NoNewWindow
-          # Verify the DLL landed where expected
-          $ndiDll = "C:\Program Files\NDI\NDI 6 Runtime\v6\Processing.NDI.Lib.x64.dll"
-          if (Test-Path $ndiDll) {
-            Write-Host "NDI SDK installed successfully: $ndiDll"
+          Write-Host "Download complete. Running silent install..."
+
+          # InnoSetup silent flags — /VERYSILENT suppresses all UI, including EULA
+          $proc = Start-Process -FilePath $ndiInstaller `
+                                -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" `
+                                -PassThru -NoNewWindow
+          # Guard with a 3-minute timeout so the job doesn't hang forever
+          if (-not $proc.WaitForExit(180000)) {
+            $proc.Kill()
+            Write-Error "NDI Runtime installer timed out after 3 minutes."
+            exit 1
+          }
+          Write-Host "Installer exited with code: $($proc.ExitCode)"
+
+          # Locate the DLL — path varies slightly by SDK version
+          $ndiDll = Get-ChildItem -Path "C:\Program Files\NDI" `
+                                  -Filter "Processing.NDI.Lib.x64.dll" `
+                                  -Recurse -ErrorAction SilentlyContinue |
+                    Select-Object -First 1
+          if ($ndiDll) {
+            Write-Host "NDI DLL ready at: $($ndiDll.FullName)"
           } else {
-            # Fallback: search anywhere under Program Files\NDI
-            $found = Get-ChildItem -Path "C:\Program Files\NDI" -Filter "Processing.NDI.Lib.x64.dll" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($found) {
-              Write-Host "NDI DLL found at: $($found.FullName)"
-            } else {
-              Write-Error "NDI SDK DLL not found after installation!"
-              exit 1
-            }
+            Write-Error "Processing.NDI.Lib.x64.dll not found after installation!"
+            exit 1
           }
 
       - name: Build release binary
