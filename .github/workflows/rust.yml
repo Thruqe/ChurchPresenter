@@ -17,10 +17,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install GTK4 dependencies
+      - name: Install GTK4 and packaging dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev build-essential pkg-config rpm
+          sudo apt-get install -y \
+            libgtk-4-dev build-essential pkg-config rpm \
+            imagemagick
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -30,7 +32,7 @@ jobs:
 
       - name: Build Linux Installer
         run: |
-          VERSION=$(sed -n 's/^version *= *["'\'']\([^"'\''\\]*\)["'\'']/\1/p' version.toml)
+          VERSION=$(sed -n 's/^version *= *["\x27]\([^"\x27\\]*\)["\x27]/\1/p' version.toml)
           ./metadata/bundle_linux.sh "$VERSION"
 
       - name: Upload Linux Installer
@@ -64,6 +66,31 @@ jobs:
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-gcc
 
+      - name: Install NDI SDK (Windows)
+        shell: powershell
+        run: |
+          # Download the NDI 6 SDK installer from the official Vizrt CDN
+          $ndiInstallerUrl = "https://downloads.ndi.tv/SDK/NDI_SDK/NDI%206%20SDK.exe"
+          $ndiInstaller = "$env:TEMP\NDI_SDK_installer.exe"
+          Write-Host "Downloading NDI SDK..."
+          Invoke-WebRequest -Uri $ndiInstallerUrl -OutFile $ndiInstaller -UseBasicParsing
+          Write-Host "Installing NDI SDK silently..."
+          Start-Process -FilePath $ndiInstaller -ArgumentList "/S" -Wait -NoNewWindow
+          # Verify the DLL landed where expected
+          $ndiDll = "C:\Program Files\NDI\NDI 6 Runtime\v6\Processing.NDI.Lib.x64.dll"
+          if (Test-Path $ndiDll) {
+            Write-Host "NDI SDK installed successfully: $ndiDll"
+          } else {
+            # Fallback: search anywhere under Program Files\NDI
+            $found = Get-ChildItem -Path "C:\Program Files\NDI" -Filter "Processing.NDI.Lib.x64.dll" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) {
+              Write-Host "NDI DLL found at: $($found.FullName)"
+            } else {
+              Write-Error "NDI SDK DLL not found after installation!"
+              exit 1
+            }
+          }
+
       - name: Build release binary
         shell: msys2 {0}
         run: cargo build --release
@@ -80,7 +107,9 @@ jobs:
       - name: Compile Windows Installer
         shell: bash
         run: |
-          VERSION=$(sed -n 's/^version *= *["'\'']\([^"'\''\\]*\)["'\'']/\1/p' version.toml)
+          VERSION=$(sed -n "s/^version *= *[\"']\([^\"'\\]*\)[\"']/\1/p" version.toml)
+          # NSIS must find play.ico relative to the .nsi file's directory (metadata/)
+          cp metadata/play.ico metadata/play.ico   # no-op, already there
           makensis -DVERSION=$VERSION metadata/installer.nsi
 
       - name: Sign Executable and Installer (Windows)
@@ -139,7 +168,7 @@ jobs:
           MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
           MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
         run: |
-          VERSION=$(sed -n 's/^version *= *["'\'']\([^"'\''\\]*\)["'\'']/\1/p' version.toml)
+          VERSION=$(sed -n 's/^version *= *["\x27]\([^"\x27\\]*\)["\x27]/\1/p' version.toml)
           ./metadata/bundle_macos.sh "$VERSION"
 
       - name: Upload macOS Installer
@@ -163,9 +192,9 @@ jobs:
 
       - name: Check version and create tag
         run: |
-          VERSION=$(sed -n 's/^version *= *["'\'']\([^"'\''\\]*\)["'\'']/\1/p' version.toml)
+          VERSION=$(sed -n 's/^version *= *["\x27]\([^"\x27\\]*\)["\x27]/\1/p' version.toml)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          
+
           git fetch --tags
           if git rev-parse "v$VERSION" >/dev/null 2>&1; then
             echo "TAG_EXISTS=true" >> $GITHUB_ENV
@@ -204,10 +233,10 @@ jobs:
         if: env.TAG_EXISTS == 'false'
         run: |
           mkdir -p ./release-assets
-          cp ./dist-linux/church-presenter-setup.deb ./release-assets/church-presenter-linux-amd64.deb
-          cp ./dist-linux/church-presenter-setup.rpm ./release-assets/church-presenter-linux-amd64.rpm
+          cp ./dist-linux/church-presenter-setup.deb  ./release-assets/church-presenter-linux-amd64.deb
+          cp ./dist-linux/church-presenter-setup.rpm  ./release-assets/church-presenter-linux-amd64.rpm
           cp ./dist-windows/church-presenter-setup.exe ./release-assets/church-presenter-windows-amd64-setup.exe
-          cp ./dist-macos/church-presenter-setup.dmg ./release-assets/church-presenter-macos-amd64.dmg
+          cp ./dist-macos/church-presenter-setup.dmg  ./release-assets/church-presenter-macos-amd64.dmg
 
       - name: Create Release
         if: env.TAG_EXISTS == 'false'
@@ -217,8 +246,13 @@ jobs:
           name: Release v${{ env.VERSION }}
           body: |
             Automated release for version v${{ env.VERSION }}.
-            
+
             Installers for all supported platforms are attached below.
+
+            **What's included:**
+            - All required runtime DLLs / shared libraries (GTK4, NDI, etc.)
+            - No separate NDI SDK installation required on end-user machines
+            - Full icon coverage across OS contexts (taskbar, launcher, file manager, Alt+Tab)
           files: |
             ./release-assets/church-presenter-linux-amd64.deb
             ./release-assets/church-presenter-linux-amd64.rpm

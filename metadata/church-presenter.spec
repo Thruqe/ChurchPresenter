@@ -23,19 +23,51 @@ rm -rf $RPM_BUILD_ROOT
 mkdir -p $RPM_BUILD_ROOT/usr/bin
 mkdir -p $RPM_BUILD_ROOT/usr/lib64
 mkdir -p $RPM_BUILD_ROOT/usr/share/applications
-mkdir -p $RPM_BUILD_ROOT/usr/share/icons/hicolor/512x512/apps
+mkdir -p $RPM_BUILD_ROOT/usr/share/pixmaps
+
+# Icon directories for all required sizes
+for SIZE in 16 24 32 48 64 128 256 512; do
+    mkdir -p $RPM_BUILD_ROOT/usr/share/icons/hicolor/${SIZE}x${SIZE}/apps
+done
 
 cp %{_sourcedir}/church-presenter $RPM_BUILD_ROOT/usr/bin/
 cp %{_sourcedir}/libndi.so.4 $RPM_BUILD_ROOT/usr/lib64/
-cp %{_sourcedir}/church-presenter.png $RPM_BUILD_ROOT/usr/share/icons/hicolor/512x512/apps/
+
+# Install each pre-generated icon size
+for SIZE in 16 24 32 48 64 128 256 512; do
+    cp %{_sourcedir}/icons/church-presenter_${SIZE}.png \
+       $RPM_BUILD_ROOT/usr/share/icons/hicolor/${SIZE}x${SIZE}/apps/church-presenter.png
+done
+
+# Legacy pixmaps (48px)
+cp %{_sourcedir}/icons/church-presenter_48.png \
+   $RPM_BUILD_ROOT/usr/share/pixmaps/church-presenter.png
+
 cp %{_sourcedir}/church-presenter.desktop $RPM_BUILD_ROOT/usr/share/applications/
+
+%post
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+update-desktop-database /usr/share/applications 2>/dev/null || true
+
+%postun
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+update-desktop-database /usr/share/applications 2>/dev/null || true
 
 %files
 /usr/bin/church-presenter
 /usr/lib64/libndi.so.4
-/usr/share/icons/hicolor/512x512/apps/church-presenter.png
 /usr/share/applications/church-presenter.desktop
+/usr/share/pixmaps/church-presenter.png
+/usr/share/icons/hicolor/16x16/apps/church-presenter.png
+/usr/share/icons/hicolor/24x24/apps/church-presenter.png
+/usr/share/icons/hicolor/32x32/apps/church-presenter.png
+/usr/share/icons/hicolor/48x48/apps/church-presenter.png
+/usr/share/icons/hicolor/64x64/apps/church-presenter.png
+/usr/share/icons/hicolor/128x128/apps/church-presenter.png
+/usr/share/icons/hicolor/256x256/apps/church-presenter.png
+/usr/share/icons/hicolor/512x512/apps/church-presenter.png
 
 %changelog
 * Sun Jul 19 2026 Daniel Peter <danielpeter0039@gmail.com> - 2.0.0-1
+- Bundle all hicolor icon sizes (16–512 px) and add post-install cache refresh
 - Initial release with bundled libndi.so.4 and GTK4 assets

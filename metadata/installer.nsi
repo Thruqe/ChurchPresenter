@@ -18,7 +18,7 @@ SetCompressor lzma
 # Include modern UI
 !include "MUI2.nsh"
 
-# MUI Settings
+# MUI Settings — use our custom icon throughout all installer pages
 !define MUI_ABORTWARNING
 !define MUI_ICON "${ICON_FILE}"
 !define MUI_UNICON "${ICON_FILE}"
@@ -46,21 +46,26 @@ RequestExecutionLevel admin
 
 Section "Install"
     SetOutPath "$INSTDIR"
-    
-    # Copy all files from the bundle directory
-    File /r "../dist-windows-bundle\*"
+
+    # Copy all files from the bundle directory (includes exe, DLLs, GTK assets, NDI DLL, icon)
+    File /r "..\dist-windows-bundle\*"
 
     # Write registry keys for uninstaller
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayName" "${APP_NAME}"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "UninstallString" '"$INSTDIR\uninstall.exe"'
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayIcon" "$INSTDIR\church-presenter.exe"
+
+    # Point DisplayIcon to the bundled .ico file so Programs & Features shows the correct icon
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayIcon" "$INSTDIR\church-presenter.ico"
+
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "Publisher" "${COMP_NAME}"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayVersion" "${APP_VERSION}"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "HelpLink" "${HELP_URL}"
-    
-    # Create shortcuts
-    CreateShortcut "$SMPROGRAMS\${APP_NAME}.lnk" "$INSTDIR\church-presenter.exe" "" "$INSTDIR\church-presenter.exe" 0
-    CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\church-presenter.exe" "" "$INSTDIR\church-presenter.exe" 0
+
+    # Create shortcuts — use the bundled .ico for a consistent icon in Start Menu,
+    # Desktop, taskbar and jump lists. The .ico is a multi-resolution file so Windows
+    # will pick the best size for each context automatically.
+    CreateShortcut "$SMPROGRAMS\${APP_NAME}.lnk" "$INSTDIR\church-presenter.exe" "" "$INSTDIR\church-presenter.ico" 0
+    CreateShortcut "$DESKTOP\${APP_NAME}.lnk"    "$INSTDIR\church-presenter.exe" "" "$INSTDIR\church-presenter.ico" 0
 
     WriteUninstaller "$INSTDIR\uninstall.exe"
 SectionEnd
