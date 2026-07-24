@@ -142,44 +142,104 @@ pub fn save_song(song: &Song) -> i64 {
     }
 }
 
+pub fn get_max_chapter(conn: &Connection, book_id: i32) -> i32 {
+    let sql = "SELECT MAX(chapter) FROM verse WHERE book_id = ?";
+    conn.query_row(sql, params![book_id], |row| row.get::<_, Option<i32>>(0))
+        .ok()
+        .flatten()
+        .unwrap_or(1)
+}
+
+pub fn get_max_verse(conn: &Connection, book_id: i32, chapter: i32) -> i32 {
+    let sql = "SELECT MAX(verse) FROM verse WHERE book_id = ? AND chapter = ?";
+    conn.query_row(sql, params![book_id, chapter], |row| row.get::<_, Option<i32>>(0))
+        .ok()
+        .flatten()
+        .unwrap_or(1)
+}
+
 pub fn parse_reference(query: &str) -> (String, Option<i32>, Option<i32>) {
     let mut q = query.trim();
     if q.starts_with('=') {
         q = q[1..].trim();
     }
+    if q.is_empty() {
+        return ("".to_string(), None, None);
+    }
 
-    let (left, verse) = if let Some(colon_idx) = q.rfind(':') {
-        let (l, r) = q.split_at(colon_idx);
-        let v_num = r[1..].trim().parse::<i32>().ok();
-        (l.trim(), v_num)
-    } else {
-        (q, None)
-    };
+    if let Some(colon_idx) = q.rfind(':') {
+        let (left, right) = q.split_at(colon_idx);
+        let verse = right[1..].trim().parse::<i32>().ok();
+        let left_trimmed = left.trim();
+        if let Some(space_idx) = left_trimmed.rfind(' ') {
+            let (book, chap) = left_trimmed.split_at(space_idx);
+            if let Ok(chap_num) = chap.trim().parse::<i32>() {
+                return (book.trim().to_string(), Some(chap_num), verse);
+            }
+        }
+        return (left_trimmed.to_string(), None, verse);
+    }
 
-    if let Some(space_idx) = left.rfind(' ') {
-        let (book, chap) = left.split_at(space_idx);
-        if let Some(chap_num) = chap.trim().parse::<i32>().ok() {
-            return (book.trim().to_string(), Some(chap_num), verse);
+    let parts: Vec<&str> = q.split_whitespace().collect();
+    if parts.is_empty() {
+        return ("".to_string(), None, None);
+    }
+
+    let len = parts.len();
+    if len >= 3 {
+        let last = parts[len - 1].parse::<i32>();
+        let second_last = parts[len - 2].parse::<i32>();
+        if let (Ok(v_num), Ok(c_num)) = (last, second_last) {
+            let book_name = parts[..len - 2].join(" ");
+            return (book_name, Some(c_num), Some(v_num));
         }
     }
 
-    (left.to_string(), None, verse)
+    if len >= 2 {
+        let last = parts[len - 1].parse::<i32>();
+        if let Ok(c_num) = last {
+            let book_name = parts[..len - 1].join(" ");
+            return (book_name, Some(c_num), None);
+        }
+    }
+
+    (q.to_string(), None, None)
 }
 
-pub fn query_verses_by_mode(
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct ParsedRef {
+    pub book_name: String,
+    pub chapter: i32,
+    pub verse: Option<i32>,
+    pub max_chapter: i32,
+    pub max_verse: i32,
+}
+
+pub fn query_verses_by_mode_with_ref(
     search_query: &str,
     translation: &str,
     search_by_keyword: bool,
-) -> Vec<Verse> {
+) -> (Vec<Verse>, Option<ParsedRef>) {
     let conn_res = Connection::open(get_kjv_db_path());
     if conn_res.is_err() {
-        return vec![];
+        return (vec![], None);
     }
     let conn = conn_res.unwrap();
 
     let trimmed = search_query.trim();
     if trimmed.is_empty() {
-        return load_default_genesis_1(&conn, translation);
+        let verses = load_default_genesis_1(&conn, translation);
+        return (
+            verses,
+            Some(ParsedRef {
+                book_name: "Genesis".to_string(),
+                chapter: 1,
+                verse: None,
+                max_chapter: 50,
+                max_verse: 31,
+            }),
+        );
     }
 
     if search_by_keyword {
@@ -187,7 +247,7 @@ pub fn query_verses_by_mode(
         let mut stmt = if let Ok(s) = conn.prepare(keyword_sql) {
             s
         } else {
-            return vec![];
+            return (vec![], None);
         };
         let rows_res = stmt.query_map(params![format!("%{}%", trimmed)], |row| {
             let chap = row.get::<_, i32>(0)?;
@@ -200,13 +260,15 @@ pub fn query_verses_by_mode(
                 text: txt,
             })
         });
-        if let Ok(rows) = rows_res {
-            return rows.filter_map(|r| r.ok()).collect();
-        }
-        return vec![];
+        let verses = if let Ok(rows) = rows_res {
+            rows.filter_map(|r| r.ok()).collect()
+        } else {
+            vec![]
+        };
+        return (verses, None);
     }
 
-    let (book_name, chapter, _verse) = parse_reference(trimmed);
+    let (book_name, raw_chapter, raw_verse) = parse_reference(trimmed);
 
     let book_id_query = "SELECT id, name FROM book WHERE name LIKE ? ORDER BY id LIMIT 1";
     let book_res = conn.query_row(book_id_query, params![format!("{}%", book_name)], |row| {
@@ -214,10 +276,23 @@ pub fn query_verses_by_mode(
     });
 
     if let Ok((book_id, real_book_name)) = book_res {
-        let chap_num = chapter.unwrap_or(1);
+        let max_chap = get_max_chapter(&conn, book_id);
+        let chap_num = match raw_chapter {
+            Some(c) => c.clamp(1, max_chap),
+            None => 1,
+        };
 
-        let mut stmt = if let Ok(s) = conn.prepare("SELECT chapter, verse, text FROM verse WHERE book_id = ? AND chapter = ? ORDER BY verse") { s } else { return vec![]; };
-        if let Ok(rows) = stmt.query_map(params![book_id, chap_num], |row| {
+        let max_v = get_max_verse(&conn, book_id, chap_num);
+        let clamped_verse = raw_verse.map(|v| v.clamp(1, max_v));
+
+        let mut stmt = if let Ok(s) = conn.prepare(
+            "SELECT chapter, verse, text FROM verse WHERE book_id = ? AND chapter = ? ORDER BY verse",
+        ) {
+            s
+        } else {
+            return (vec![], None);
+        };
+        let verses_res = stmt.query_map(params![book_id, chap_num], |row| {
             Ok(Verse {
                 translation: translation.to_string(),
                 reference: format!(
@@ -228,15 +303,29 @@ pub fn query_verses_by_mode(
                 ),
                 text: row.get::<_, String>(2)?.replace("[", "").replace("]", ""),
             })
-        }) {
-            return rows.filter_map(|r| r.ok()).collect();
-        }
+        });
+
+        let verses = if let Ok(rows) = verses_res {
+            rows.filter_map(|r| r.ok()).collect()
+        } else {
+            vec![]
+        };
+
+        let parsed_ref = ParsedRef {
+            book_name: real_book_name,
+            chapter: chap_num,
+            verse: clamped_verse,
+            max_chapter: max_chap,
+            max_verse: max_v,
+        };
+
+        return (verses, Some(parsed_ref));
     } else {
         let keyword_sql = "SELECT v.chapter, v.verse, v.text, b.name FROM verse v JOIN book b ON v.book_id = b.id WHERE v.text LIKE ? ORDER BY b.id, v.chapter, v.verse LIMIT 100";
         let mut stmt = if let Ok(s) = conn.prepare(keyword_sql) {
             s
         } else {
-            return vec![];
+            return (vec![], None);
         };
         let rows_res = stmt.query_map(params![format!("%{}%", trimmed)], |row| {
             let chap = row.get::<_, i32>(0)?;
@@ -249,12 +338,22 @@ pub fn query_verses_by_mode(
                 text: txt,
             })
         });
-        if let Ok(rows) = rows_res {
-            return rows.filter_map(|r| r.ok()).collect();
-        }
+        let verses = if let Ok(rows) = rows_res {
+            rows.filter_map(|r| r.ok()).collect()
+        } else {
+            vec![]
+        };
+        return (verses, None);
     }
+}
 
-    vec![]
+pub fn query_verses_by_mode(
+    search_query: &str,
+    translation: &str,
+    search_by_keyword: bool,
+) -> Vec<Verse> {
+    let (verses, _) = query_verses_by_mode_with_ref(search_query, translation, search_by_keyword);
+    verses
 }
 
 pub fn query_verses(search_query: &str, translation: &str) -> Vec<Verse> {
@@ -572,5 +671,46 @@ pub fn get_config_value(key: &str) -> Option<String> {
 pub fn delete_song(song_id: i64) {
     if let Ok(conn) = Connection::open(get_data_db_path()) {
         let _ = conn.execute("DELETE FROM songs WHERE id = ?", params![song_id]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_reference_patterns() {
+        assert_eq!(parse_reference("John"), ("John".to_string(), None, None));
+        assert_eq!(parse_reference("John 3"), ("John".to_string(), Some(3), None));
+        assert_eq!(parse_reference("John 3:"), ("John".to_string(), Some(3), None));
+        assert_eq!(parse_reference("John 3:16"), ("John".to_string(), Some(3), Some(16)));
+        assert_eq!(parse_reference("John 3 16"), ("John".to_string(), Some(3), Some(16)));
+        assert_eq!(parse_reference("1 John 3 16"), ("1 John".to_string(), Some(3), Some(16)));
+        assert_eq!(parse_reference("Song of Solomon 2 4"), ("Song of Solomon".to_string(), Some(2), Some(4)));
+    }
+
+    #[test]
+    fn test_query_verses_clamping() {
+        let (verses_j3, p_ref) = query_verses_by_mode_with_ref("John 3", "KJV", false);
+        assert!(!verses_j3.is_empty());
+        let p = p_ref.unwrap();
+        assert_eq!(p.book_name, "John");
+        assert_eq!(p.chapter, 3);
+        assert_eq!(p.verse, None);
+
+        // Test max chapter clamping (John has 21 chapters)
+        let (verses_j99, p_ref99) = query_verses_by_mode_with_ref("John 99", "KJV", false);
+        assert!(!verses_j99.is_empty());
+        let p99 = p_ref99.unwrap();
+        assert_eq!(p99.book_name, "John");
+        assert_eq!(p99.chapter, 21); // clamped from 99 to 21
+
+        // Test max verse clamping (John 3 has 36 verses)
+        let (verses_v99, p_ref_v99) = query_verses_by_mode_with_ref("John 3:99", "KJV", false);
+        assert!(!verses_v99.is_empty());
+        let pv99 = p_ref_v99.unwrap();
+        assert_eq!(pv99.book_name, "John");
+        assert_eq!(pv99.chapter, 3);
+        assert_eq!(pv99.verse, Some(36)); // clamped from 99 to 36
     }
 }

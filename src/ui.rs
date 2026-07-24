@@ -8,7 +8,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::db::{
-    autocomplete_book_name, get_songs, parse_reference, query_verses, query_verses_by_mode,
+    autocomplete_book_name, get_songs, query_verses, query_verses_by_mode,
+    query_verses_by_mode_with_ref,
 };
 use crate::models::{AppState, SongStanza, Verse};
 
@@ -3350,8 +3351,10 @@ pub fn build_ui(app: &Application) {
                 let query = entry.text().to_string();
                 let active_trans = state.borrow().selected_translation;
                 let by_keyword = state.borrow().search_by_keyword;
-                let new_verses = query_verses_by_mode(&query, active_trans, by_keyword);
-                let (_book, _chap, verse) = parse_reference(&query);
+                let (new_verses, parsed_ref) =
+                    query_verses_by_mode_with_ref(&query, active_trans, by_keyword);
+                let verse = parsed_ref.as_ref().and_then(|p| p.verse);
+
                 let mut s = state.borrow_mut();
                 s.verses = new_verses;
                 s.selected_verse_index = None;
