@@ -719,4 +719,21 @@ mod tests {
         assert_eq!(pv99.chapter, 3);
         assert_eq!(pv99.verse, Some(36)); // clamped from 99 to 36
     }
+
+    #[test]
+    fn test_psalms_queries() {
+        let (v1, p1) = query_verses_by_mode_with_ref("Psalm 23", "KJV", false);
+        assert!(!v1.is_empty());
+        assert_eq!(p1.unwrap().book_name, "Psalms");
+
+        let (v2, p2) = query_verses_by_mode_with_ref("Psalms 23:1", "KJV", false);
+        assert!(!v2.is_empty());
+        assert_eq!(p2.unwrap().verse, Some(1));
+
+        let (v3, p3) = query_verses_by_mode_with_ref("Psalm 119:200", "KJV", false);
+        assert!(!v3.is_empty());
+        let p3_ref = p3.unwrap();
+        assert_eq!(p3_ref.chapter, 119);
+        assert_eq!(p3_ref.verse, Some(176)); // Psalm 119 has max 176 verses
+    }
 }

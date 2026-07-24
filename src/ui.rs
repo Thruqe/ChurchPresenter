@@ -306,15 +306,14 @@ fn draw_single_slide_text(
                 stanza.lower_bar_height,
             );
         } else {
-            let body_font_size = height * 0.06;
-            let header_font_size = height * 0.045;
+            if width <= 50.0 || height <= 50.0 {
+                return;
+            }
 
-            println!(
-                "DEBUG: UI canvas draw_single_slide_text — height={:.1}, body_font_size={:.1}",
-                height, body_font_size
-            );
+            let body_font_size = (height * 0.06).max(8.0);
+            let header_font_size = (height * 0.045).max(7.0);
 
-            let max_width = width - width * 0.15;
+            let max_width = (width - width * 0.15).max(20.0);
             let mut wrapped_lines = Vec::new();
 
             cr.set_font_size(body_font_size);
@@ -328,15 +327,17 @@ fn draw_single_slide_text(
                     } else {
                         format!("{} {}", current_line, word)
                     };
-                    if let Ok(ext) = cr.text_extents(&test_line) {
-                        if ext.width() > max_width {
-                            if !current_line.is_empty() {
-                                wrapped_lines.push(current_line);
-                            }
-                            current_line = word.to_string();
-                        } else {
-                            current_line = test_line;
+                    let text_w = cr
+                        .text_extents(&test_line)
+                        .map(|ext| ext.width())
+                        .unwrap_or_else(|_| test_line.len() as f64 * body_font_size * 0.5);
+                    if text_w > max_width {
+                        if !current_line.is_empty() {
+                            wrapped_lines.push(current_line);
                         }
+                        current_line = word.to_string();
+                    } else {
+                        current_line = test_line;
                     }
                 }
                 if !current_line.is_empty() {
@@ -344,28 +345,35 @@ fn draw_single_slide_text(
                 }
             }
 
-            let line_spacing = height * 0.06;
+            let line_spacing = (height * 0.06).max(body_font_size * 1.2);
             let total_body_height = if wrapped_lines.is_empty() {
                 0.0
             } else {
                 (wrapped_lines.len() - 1) as f64 * line_spacing + body_font_size
             };
 
-            let start_y = (height - total_body_height) / 2.0;
+            let start_y = ((height - total_body_height) / 2.0).max(10.0);
 
             let mut current_y = start_y + body_font_size * 0.8;
             for line in &wrapped_lines {
-                if let Ok(ext) = cr.text_extents(line) {
-                    cr.move_to((width - ext.width()) / 2.0, current_y);
-                    let _ = cr.show_text(line);
-                }
+                let text_w = cr
+                    .text_extents(line)
+                    .map(|ext| ext.width())
+                    .unwrap_or_else(|_| line.len() as f64 * body_font_size * 0.5);
+                let x = ((width - text_w) / 2.0).max(5.0);
+                cr.move_to(x, current_y);
+                let _ = cr.show_text(line);
                 current_y += line_spacing;
             }
 
-            cr.set_font_size(header_font_size);
-            cr.set_source_rgba(0.85, 0.85, 0.85, alpha);
-            if let Ok(ext) = cr.text_extents(header) {
-                let header_x = width - ext.width() - width * 0.075;
+            if !header.is_empty() {
+                cr.set_font_size(header_font_size);
+                cr.set_source_rgba(0.85, 0.85, 0.85, alpha);
+                let text_w = cr
+                    .text_extents(header)
+                    .map(|ext| ext.width())
+                    .unwrap_or_else(|_| header.len() as f64 * header_font_size * 0.5);
+                let header_x = (width - text_w - width * 0.075).max(5.0);
                 let header_y = current_y + height * 0.02;
                 cr.move_to(header_x, header_y);
                 let _ = cr.show_text(header);
@@ -2987,6 +2995,9 @@ pub fn build_ui(app: &Application) {
             };
 
             if let Some((orig_idx, verse)) = verse_data {
+                if s.selected_verse_index == Some(orig_idx) && s.current_selection_type == 0 {
+                    return;
+                }
                 s.selected_verse_index = Some(orig_idx);
                 s.current_selection_type = 0; // Scripture
                 s.preview_song_stanzas = None;
