@@ -29,6 +29,8 @@ macro_rules! eprintln {
 fn main() {
     unsafe {
         std::env::set_var("GTK_CSD", "0");
+        #[cfg(target_os = "windows")]
+        std::env::set_var("GSK_RENDERER", "cairo");
     }
 
     // Initialize simplelog logger

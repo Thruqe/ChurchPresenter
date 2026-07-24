@@ -1604,6 +1604,9 @@ pub fn build_ui(app: &Application) {
 
     let state_draw_preview = state.clone();
     preview_drawing_area.set_draw_func(move |_area, cr, width, height| {
+        if width <= 0 || height <= 0 {
+            return;
+        }
         let s = state_draw_preview.borrow();
         let theme = s.selected_theme;
         let theme_str = if theme == "custom" {
@@ -1765,6 +1768,9 @@ pub fn build_ui(app: &Application) {
 
     let state_draw_live = state.clone();
     live_drawing_area.set_draw_func(move |_area, cr, width, height| {
+        if width <= 0 || height <= 0 {
+            return;
+        }
         let s = state_draw_live.borrow();
         let theme = s.selected_theme;
         let theme_str = if theme == "custom" {
@@ -4220,6 +4226,9 @@ fn show_song_editor_window(
     let song_state_draw = song_state.clone();
     let active_stanza_idx_draw = active_stanza_idx.clone();
     canvas_drawing_area.set_draw_func(move |_, cr, width, height| {
+        if width <= 0 || height <= 0 {
+            return;
+        }
         let song = song_state_draw.borrow();
         let idx = *active_stanza_idx_draw.borrow();
         if let Some(stanza) = song.stanzas.get(idx) {
