@@ -299,6 +299,7 @@ pub fn query_verses_by_mode_with_ref(
             return (vec![], None);
         };
         let verses_res = stmt.query_map(params![book_id, chap_num], |row| {
+            let raw_txt: String = row.get(2)?;
             Ok(Verse {
                 translation: translation.to_string(),
                 reference: format!(
@@ -307,7 +308,7 @@ pub fn query_verses_by_mode_with_ref(
                     row.get::<_, i32>(0)?,
                     row.get::<_, i32>(1)?
                 ),
-                text: row.get::<_, String>(2)?.replace("[", "").replace("]", ""),
+                text: clean_verse_text(&raw_txt),
             })
         });
 
@@ -336,12 +337,12 @@ pub fn query_verses_by_mode_with_ref(
         let rows_res = stmt.query_map(params![format!("%{}%", trimmed)], |row| {
             let chap = row.get::<_, i32>(0)?;
             let ver = row.get::<_, i32>(1)?;
-            let txt = row.get::<_, String>(2)?.replace("[", "").replace("]", "");
+            let raw_txt: String = row.get(2)?;
             let b_name = row.get::<_, String>(3)?;
             Ok(Verse {
                 translation: translation.to_string(),
                 reference: format!("{} {}:{}", b_name, chap, ver),
-                text: txt,
+                text: clean_verse_text(&raw_txt),
             })
         });
         let verses = if let Ok(rows) = rows_res {
@@ -366,6 +367,18 @@ pub fn query_verses(search_query: &str, translation: &str) -> Vec<Verse> {
     query_verses_by_mode(search_query, translation, false)
 }
 
+pub fn clean_verse_text(raw: &str) -> String {
+    let mut s = raw.to_string();
+    while let Some(start) = s.find('<') {
+        if let Some(end) = s[start..].find('>') {
+            s.drain(start..=start + end);
+        } else {
+            break;
+        }
+    }
+    s.replace('[', "").replace(']', "").trim().to_string()
+}
+
 pub fn load_default_genesis_1(conn: &Connection, translation: &str) -> Vec<Verse> {
     let book_res = conn.query_row(
         "SELECT id, name FROM book WHERE name = 'Genesis' LIMIT 1",
@@ -376,6 +389,7 @@ pub fn load_default_genesis_1(conn: &Connection, translation: &str) -> Vec<Verse
     if let Ok((book_id, real_book_name)) = book_res {
         let mut stmt = if let Ok(s) = conn.prepare("SELECT chapter, verse, text FROM verse WHERE book_id = ? AND chapter = 1 ORDER BY verse") { s } else { return vec![]; };
         let rows_res = stmt.query_map([book_id], |row| {
+            let raw_txt: String = row.get(2)?;
             Ok(Verse {
                 translation: translation.to_string(),
                 reference: format!(
@@ -384,7 +398,7 @@ pub fn load_default_genesis_1(conn: &Connection, translation: &str) -> Vec<Verse
                     row.get::<_, i32>(0)?,
                     row.get::<_, i32>(1)?
                 ),
-                text: row.get::<_, String>(2)?.replace("[", "").replace("]", ""),
+                text: clean_verse_text(&raw_txt),
             })
         });
         if let Ok(rows) = rows_res {
@@ -735,5 +749,11 @@ mod tests {
         let p3_ref = p3.unwrap();
         assert_eq!(p3_ref.chapter, 119);
         assert_eq!(p3_ref.verse, Some(176)); // Psalm 119 has max 176 verses
+    }
+
+    #[test]
+    fn test_clean_verse_text() {
+        let raw = "<A Song of degrees of David.> I was glad when they said unto me...";
+        assert_eq!(clean_verse_text(raw), "I was glad when they said unto me...");
     }
 }
