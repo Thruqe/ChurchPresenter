@@ -30,7 +30,12 @@ fn main() {
     unsafe {
         std::env::set_var("GTK_CSD", "0");
         #[cfg(target_os = "windows")]
-        std::env::set_var("GSK_RENDERER", "cairo");
+        {
+            std::env::set_var("GSK_RENDERER", "cairo");
+            std::env::set_var("GDK_WIN32_DISABLE_DIRECT2D", "1");
+            std::env::set_var("GDK_DISABLE", "d2d");
+            std::env::set_var("GDK_DEBUG", "no-d2d");
+        }
     }
 
     // Initialize simplelog logger
