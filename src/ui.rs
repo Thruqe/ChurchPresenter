@@ -4,7 +4,7 @@ use gtk::{
     Application, ApplicationWindow, Box, Button, Entry, FlowBox, Image, Label, ListBox, ListBoxRow,
     Orientation, PolicyType, Popover, ScrolledWindow, Separator, Stack,
 };
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crate::db::{
@@ -2948,18 +2948,8 @@ pub fn build_ui(app: &Application) {
 
             if let Some(row) = target_row {
                 scriptures_list_box.select_row(Some(&row));
-                let row_clone = row.clone();
-                gtk::glib::idle_add_local_once(move || {
-                    row_clone.grab_focus();
-                });
-            } else {
-                if let Some(row) = scriptures_list_box.row_at_index(0) {
-                    scriptures_list_box.select_row(Some(&row));
-                    let row_clone = row.clone();
-                    gtk::glib::idle_add_local_once(move || {
-                        row_clone.grab_focus();
-                    });
-                }
+            } else if let Some(row) = scriptures_list_box.row_at_index(0) {
+                scriptures_list_box.select_row(Some(&row));
             }
         }
     };
@@ -3337,6 +3327,7 @@ pub fn build_ui(app: &Application) {
 
     // ── Book-name autocomplete + free-text chapter:verse search ────────────────
     {
+        let is_searching = Rc::new(Cell::new(false));
         let run_search = {
             let state = state.clone();
             let populate = populate_verses_table.clone();
@@ -3345,9 +3336,13 @@ pub fn build_ui(app: &Application) {
             let preview_text_container = preview_text_container.clone();
             let preview_drawing_area = preview_drawing_area.clone();
             let preview_title_label = preview_title_label.clone();
+            let is_searching = is_searching.clone();
             move |push_to_live: bool| {
-                println!("DEBUG: Closure executing...");
-                println!("DEBUG: move || closure triggered at line 1422");
+                if is_searching.get() {
+                    return;
+                }
+                is_searching.set(true);
+
                 let query = entry.text().to_string();
                 let active_trans = state.borrow().selected_translation;
                 let by_keyword = state.borrow().search_by_keyword;
@@ -3415,6 +3410,8 @@ pub fn build_ui(app: &Application) {
                 if push_to_live {
                     update_live();
                 }
+
+                is_searching.set(false);
             }
         };
         let run_search = Rc::new(run_search);
@@ -3453,24 +3450,6 @@ pub fn build_ui(app: &Application) {
             }
         });
         script_search.add_controller(key_ctrl);
-
-        // Auto-populate chapter 1 when the entry loses focus with just a book name typed
-        let focus_ctrl = gtk::EventControllerFocus::new();
-        focus_ctrl.connect_leave({
-            let entry = script_search.clone();
-            let run_search = run_search.clone();
-            let state = state.clone();
-            move |_ctrl| {
-                if state.borrow().search_by_keyword {
-                    return;
-                }
-                let text = entry.text().to_string();
-                if !text.is_empty() && !text.contains(':') {
-                    run_search(false);
-                }
-            }
-        });
-        script_search.add_controller(focus_ctrl);
 
         // Enter key: GtkEntry fires its own "activate" signal on Return —
         // EventControllerKey never sees Enter because Entry consumes it internally first.
