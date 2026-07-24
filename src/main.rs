@@ -37,6 +37,13 @@ fn main() {
             std::env::set_var("GDK_DISABLE", "d2d");
             std::env::set_var("GDK_DEBUG", "no-d2d");
         }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            if std::env::var("GSK_RENDERER").is_err() {
+                std::env::set_var("GSK_RENDERER", "cairo");
+            }
+        }
     }
 
     // Initialize simplelog logger
