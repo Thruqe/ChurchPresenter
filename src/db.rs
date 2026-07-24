@@ -1,5 +1,6 @@
 use crate::models::{Song, SongStanza, Verse};
-use rusqlite::{Connection, params};
+use crate::println;
+use rusqlite::{params, Connection};
 
 pub fn init_songs_tables() {
     if let Ok(conn) = Connection::open(get_data_db_path()) {
@@ -284,6 +285,11 @@ pub fn query_verses_by_mode_with_ref(
 
         let max_v = get_max_verse(&conn, book_id, chap_num);
         let clamped_verse = raw_verse.map(|v| v.clamp(1, max_v));
+
+        println!(
+            "Query matched book '{}' (id={}): chapter {}/max {}, verse {:?}/max {}",
+            real_book_name, book_id, chap_num, max_chap, clamped_verse, max_v
+        );
 
         let mut stmt = if let Ok(s) = conn.prepare(
             "SELECT chapter, verse, text FROM verse WHERE book_id = ? AND chapter = ? ORDER BY verse",
