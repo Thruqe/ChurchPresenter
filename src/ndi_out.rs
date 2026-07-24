@@ -1,7 +1,5 @@
 use crate::{eprintln, println};
 use gtk::cairo::{Context, FontSlant, FontWeight, Format, ImageSurface};
-use gtk::gdk_pixbuf::Pixbuf;
-use gtk::prelude::*;
 #[cfg(not(target_os = "macos"))]
 use ndi::{FourCCVideoType, FrameFormatType, VideoData};
 use std::sync::{Arc, Mutex};
@@ -34,13 +32,30 @@ pub struct NdiOutput {
     current_slide: Arc<Mutex<Option<NdiSlideData>>>,
 }
 
+fn load_image_surface(_path_str: &str) -> Option<ImageSurface> {
+    None
+}
+
+fn draw_surface_scaled(cr: &Context, surf: &ImageSurface, width: f64, height: f64) {
+    let img_w = surf.width() as f64;
+    let img_h = surf.height() as f64;
+    if img_w > 0.0 && img_h > 0.0 {
+        if let Ok(_) = cr.save() {
+            cr.scale(width / img_w, height / img_h);
+            let _ = cr.set_source_surface(surf, 0.0, 0.0);
+            let _ = cr.paint();
+            let _ = cr.restore();
+        }
+    }
+}
+
 fn draw_background(
     cr: &Context,
     width: f64,
     height: f64,
     theme: &str,
     blackout: bool,
-    cached_background_pixbuf: &Option<Pixbuf>,
+    cached_background_surface: &Option<ImageSurface>,
     bg_type: &str,
     bg_path: Option<&str>,
     default_song_bg_type: &str,
@@ -60,9 +75,8 @@ fn draw_background(
 
         if !is_song {
             // Scripture or standby slide -> Draw standard theme background
-            if let Some(scaled) = cached_background_pixbuf {
-                cr.set_source_pixbuf(scaled, 0.0, 0.0);
-                let _ = cr.paint();
+            if let Some(surf) = cached_background_surface {
+                draw_surface_scaled(cr, surf, width, height);
             } else {
                 match theme {
                     "classic-red" | "theme-classic-red" => cr.set_source_rgb(0.5, 0.0, 0.0),
@@ -71,19 +85,9 @@ fn draw_background(
                     "dark-slate" | "theme-dark-slate" => cr.set_source_rgb(0.1, 0.12, 0.15),
                     "black" | "theme-black" => cr.set_source_rgb(0.0, 0.0, 0.0),
                     _ => {
-                        let path = std::path::Path::new(theme);
-                        if path.exists() && path.is_file() {
-                            if let Ok(pixbuf) = Pixbuf::from_file(theme) {
-                                if let Some(scaled) = pixbuf.scale_simple(
-                                    width as i32,
-                                    height as i32,
-                                    gtk::gdk_pixbuf::InterpType::Bilinear,
-                                ) {
-                                    cr.set_source_pixbuf(&scaled, 0.0, 0.0);
-                                    let _ = cr.paint();
-                                    return;
-                                }
-                            }
+                        if let Some(surf) = load_image_surface(theme) {
+                            draw_surface_scaled(cr, &surf, width, height);
+                            return;
                         }
                         cr.set_source_rgb(0.0, 0.0, 0.0);
                     }
@@ -93,9 +97,8 @@ fn draw_background(
         } else {
             // Song stanza card -> Render background according to resolved types
             if actual_bg_type == "image" {
-                if let Some(scaled) = cached_background_pixbuf {
-                    cr.set_source_pixbuf(scaled, 0.0, 0.0);
-                    let _ = cr.paint();
+                if let Some(surf) = cached_background_surface {
+                    draw_surface_scaled(cr, surf, width, height);
                 } else {
                     cr.set_source_rgb(0.0, 0.0, 0.0);
                     let _ = cr.paint();
@@ -109,8 +112,8 @@ fn draw_background(
                     "dark-slate" | "theme-dark-slate" => cr.set_source_rgb(0.1, 0.12, 0.15),
                     "black" | "theme-black" => cr.set_source_rgb(0.0, 0.0, 0.0),
                     _ => {
-                        if let Some(scaled) = cached_background_pixbuf {
-                            cr.set_source_pixbuf(scaled, 0.0, 0.0);
+                        if let Some(surf) = cached_background_surface {
+                            draw_surface_scaled(cr, surf, width, height);
                         } else {
                             cr.set_source_rgb(0.1, 0.12, 0.15);
                         }
@@ -355,236 +358,231 @@ impl NdiOutput {
 
         #[cfg(not(target_os = "macos"))]
         thread::spawn(move || {
-            // NDI initialization
-            if let Err(e) = ndi::initialize() {
-                eprintln!("Failed to initialize NDI: {:?}", e);
-                return;
-            }
-
-            // Create Sender
-            let sender = match ndi::SendBuilder::new()
-                .ndi_name("ChurchPresenter Live Output".to_string())
-                .build()
-            {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("Failed to build NDI Sender: {:?}", e);
+            let res = std::panic::catch_unwind(move || {
+                // NDI initialization
+                if let Err(e) = ndi::initialize() {
+                    eprintln!("Failed to initialize NDI: {:?}", e);
                     return;
                 }
-            };
 
-            let width = 1920;
-            let height = 1080;
-            let mut pixel_buffer = vec![0u8; width * height * 4];
-
-            let mut cached_background_path = String::new();
-            let mut cached_background_pixbuf: Option<Pixbuf> = None;
-
-            println!("NDI Broadcast active: 'ChurchPresenter Live Output'");
-
-            let mut last_slide: Option<NdiSlideData> = None;
-            let mut trans_prev_slide: Option<NdiSlideData> = None;
-            let mut trans_start: Option<std::time::Instant> = None;
-            let mut last_sent_time = std::time::Instant::now();
-
-            loop {
-                // Sleep for 33ms to target ~30fps
-                thread::sleep(Duration::from_millis(33));
-
-                // Get current slide data
-                let slide_opt = {
-                    let lock = thread_slide.lock().unwrap();
-                    lock.clone()
+                // Create Sender
+                let sender = match ndi::SendBuilder::new()
+                    .ndi_name("ChurchPresenter Live Output".to_string())
+                    .build()
+                {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("Failed to build NDI Sender: {:?}", e);
+                        return;
+                    }
                 };
 
-                if let Some(slide) = slide_opt {
-                    if !slide.go_live {
-                        continue;
-                    }
+                let width = 1920;
+                let height = 1080;
+                let mut pixel_buffer = vec![0u8; width * height * 4];
 
-                    let slide_changed = match &last_slide {
-                        None => true,
-                        Some(last) => {
-                            last.header != slide.header
-                                || last.body != slide.body
-                                || last.theme != slide.theme
-                                || last.blackout != slide.blackout
-                                || last.logo_mode != slide.logo_mode
-                                || last.clearout != slide.clearout
-                                || last.logo_image_path != slide.logo_image_path
-                                || last.bg_type != slide.bg_type
-                                || last.bg_path != slide.bg_path
-                                || last.font_size != slide.font_size
-                                || last.scale != slide.scale
-                                || last.align != slide.align
-                                || last.shadow != slide.shadow
-                                || last.default_song_bg_type != slide.default_song_bg_type
-                                || last.default_song_bg_val != slide.default_song_bg_val
-                        }
+                let mut cached_background_path = String::new();
+                let mut cached_background_surface: Option<ImageSurface> = None;
+
+                println!("NDI Broadcast active: 'ChurchPresenter Live Output'");
+
+                let mut last_slide: Option<NdiSlideData> = None;
+                let mut trans_prev_slide: Option<NdiSlideData> = None;
+                let mut trans_start: Option<std::time::Instant> = None;
+                let mut last_sent_time = std::time::Instant::now();
+
+                loop {
+                    // Sleep for 33ms to target ~30fps
+                    thread::sleep(Duration::from_millis(33));
+
+                    // Get current slide data
+                    let slide_opt = {
+                        let lock = thread_slide.lock().unwrap();
+                        lock.clone()
                     };
 
-                    if slide_changed {
-                        trans_prev_slide = last_slide.clone();
-                        trans_start = Some(std::time::Instant::now());
-                        last_slide = Some(slide.clone());
-                    }
-
-                    // Check transition status
-                    let mut is_animating = false;
-                    let mut progress = 1.0f64;
-                    if let Some(start) = trans_start {
-                        let elapsed = start.elapsed().as_millis() as f64;
-                        let duration = 300.0f64; // 300ms transition
-                        if elapsed < duration {
-                            is_animating = true;
-                            progress = elapsed / duration;
-                        } else {
-                            trans_start = None;
-                            trans_prev_slide = None;
+                    if let Some(slide) = slide_opt {
+                        if !slide.go_live {
+                            continue;
                         }
-                    }
 
-                    let time_for_keep_alive =
-                        last_sent_time.elapsed() >= Duration::from_millis(1000);
-
-                    if slide_changed || is_animating || time_for_keep_alive {
-                        // Apply default song background if stanza background is transparent
-                        let (res_bg_type, res_bg_path) = if slide.bg_type == "transparent" {
-                            (
-                                slide.default_song_bg_type.as_str(),
-                                slide.default_song_bg_val.as_deref(),
-                            )
-                        } else {
-                            (slide.bg_type.as_str(), slide.bg_path.as_deref())
+                        let slide_changed = match &last_slide {
+                            None => true,
+                            Some(last) => {
+                                last.header != slide.header
+                                    || last.body != slide.body
+                                    || last.theme != slide.theme
+                                    || last.blackout != slide.blackout
+                                    || last.logo_mode != slide.logo_mode
+                                    || last.clearout != slide.clearout
+                                    || last.logo_image_path != slide.logo_image_path
+                                    || last.bg_type != slide.bg_type
+                                    || last.bg_path != slide.bg_path
+                                    || last.font_size != slide.font_size
+                                    || last.scale != slide.scale
+                                    || last.align != slide.align
+                                    || last.shadow != slide.shadow
+                                    || last.default_song_bg_type != slide.default_song_bg_type
+                                    || last.default_song_bg_val != slide.default_song_bg_val
+                            }
                         };
 
-                        let active_bg_path = if slide.logo_mode {
-                            slide.logo_image_path.as_deref().unwrap_or("")
-                        } else if res_bg_type == "image" {
-                            res_bg_path.unwrap_or("")
-                        } else if (res_bg_type == "color" || res_bg_type == "theme")
-                            && res_bg_path
-                                .map(|p| {
-                                    std::path::Path::new(p).exists()
-                                        && std::path::Path::new(p).is_file()
-                                })
-                                .unwrap_or(false)
-                        {
-                            res_bg_path.unwrap_or("")
-                        } else if res_bg_type.is_empty() && !slide.theme.is_empty() {
-                            &slide.theme
-                        } else {
-                            ""
-                        };
+                        if slide_changed {
+                            trans_prev_slide = last_slide.clone();
+                            trans_start = Some(std::time::Instant::now());
+                            last_slide = Some(slide.clone());
+                        }
 
-                        let path = std::path::Path::new(active_bg_path);
-                        if path.exists() && path.is_file() {
-                            if active_bg_path != cached_background_path
-                                || cached_background_pixbuf.is_none()
+                        // Check transition status
+                        let mut is_animating = false;
+                        let mut progress = 1.0f64;
+                        if let Some(start) = trans_start {
+                            let elapsed = start.elapsed().as_millis() as f64;
+                            let duration = 300.0f64; // 300ms transition
+                            if elapsed < duration {
+                                is_animating = true;
+                                progress = elapsed / duration;
+                            } else {
+                                trans_start = None;
+                                trans_prev_slide = None;
+                            }
+                        }
+
+                        let time_for_keep_alive =
+                            last_sent_time.elapsed() >= Duration::from_millis(1000);
+
+                        if slide_changed || is_animating || time_for_keep_alive {
+                            // Apply default song background if stanza background is transparent
+                            let (res_bg_type, res_bg_path) = if slide.bg_type == "transparent" {
+                                (
+                                    slide.default_song_bg_type.as_str(),
+                                    slide.default_song_bg_val.as_deref(),
+                                )
+                            } else {
+                                (slide.bg_type.as_str(), slide.bg_path.as_deref())
+                            };
+
+                            let active_bg_path = if slide.logo_mode {
+                                slide.logo_image_path.as_deref().unwrap_or("")
+                            } else if res_bg_type == "image" {
+                                res_bg_path.unwrap_or("")
+                            } else if (res_bg_type == "color" || res_bg_type == "theme")
+                                && res_bg_path
+                                    .map(|p| {
+                                        std::path::Path::new(p).exists()
+                                            && std::path::Path::new(p).is_file()
+                                    })
+                                    .unwrap_or(false)
                             {
-                                println!(
-                                    "DEBUG: NDI background - cache miss: loading and scaling file: {}",
-                                    active_bg_path
-                                );
-                                if let Ok(pixbuf) = Pixbuf::from_file(active_bg_path) {
-                                    if let Some(scaled) = pixbuf.scale_simple(
-                                        width as i32,
-                                        height as i32,
-                                        gtk::gdk_pixbuf::InterpType::Bilinear,
-                                    ) {
-                                        cached_background_pixbuf = Some(scaled);
+                                res_bg_path.unwrap_or("")
+                            } else if res_bg_type.is_empty() && !slide.theme.is_empty() {
+                                &slide.theme
+                            } else {
+                                ""
+                            };
+
+                            let path = std::path::Path::new(active_bg_path);
+                            if path.exists() && path.is_file() {
+                                if active_bg_path != cached_background_path
+                                    || cached_background_surface.is_none()
+                                {
+                                    if let Some(surf) = load_image_surface(active_bg_path) {
+                                        cached_background_surface = Some(surf);
                                         cached_background_path = active_bg_path.to_string();
                                     }
                                 }
-                            }
-                        } else {
-                            cached_background_pixbuf = None;
-                            cached_background_path = String::new();
-                        }
-
-                        // Create cairo ImageSurface to render slide to
-                        let mut surface =
-                            ImageSurface::create(Format::ARgb32, width as i32, height as i32)
-                                .unwrap();
-                        let cr = Context::new(&surface).unwrap();
-
-                        // 1. Draw target background instantly
-                        draw_background(
-                            &cr,
-                            width as f64,
-                            height as f64,
-                            if slide.logo_mode { "" } else { &slide.theme },
-                            slide.blackout,
-                            &cached_background_pixbuf,
-                            &slide.bg_type,
-                            slide.bg_path.as_deref(),
-                            &slide.default_song_bg_type,
-                            slide.default_song_bg_val.as_deref(),
-                            slide.lower_bar_height,
-                        );
-
-                        // 2. Draw text
-                        if is_animating {
-                            if let Some(ref prev) = trans_prev_slide {
-                                // Draw previous slide text fading out
-                                draw_single_slide_text(
-                                    &cr,
-                                    width as f64,
-                                    height as f64,
-                                    prev,
-                                    1.0 - progress,
-                                );
-                                // Draw new slide text fading in
-                                draw_single_slide_text(
-                                    &cr,
-                                    width as f64,
-                                    height as f64,
-                                    &slide,
-                                    progress,
-                                );
                             } else {
-                                draw_single_slide_text(
-                                    &cr,
-                                    width as f64,
-                                    height as f64,
-                                    &slide,
-                                    1.0,
-                                );
+                                cached_background_surface = None;
+                                cached_background_path = String::new();
                             }
-                        } else {
-                            draw_single_slide_text(&cr, width as f64, height as f64, &slide, 1.0);
+
+                            // Create cairo ImageSurface to render slide to
+                            let surface_res =
+                                ImageSurface::create(Format::ARgb32, width as i32, height as i32);
+                            if let Ok(mut surface) = surface_res {
+                                if let Ok(cr) = Context::new(&surface) {
+                                    // 1. Draw target background instantly
+                                    draw_background(
+                                        &cr,
+                                        width as f64,
+                                        height as f64,
+                                        if slide.logo_mode { "" } else { &slide.theme },
+                                        slide.blackout,
+                                        &cached_background_surface,
+                                        &slide.bg_type,
+                                        slide.bg_path.as_deref(),
+                                        &slide.default_song_bg_type,
+                                        slide.default_song_bg_val.as_deref(),
+                                        slide.lower_bar_height,
+                                    );
+
+                                    // 2. Draw text
+                                    if is_animating {
+                                        if let Some(ref prev) = trans_prev_slide {
+                                            draw_single_slide_text(
+                                                &cr,
+                                                width as f64,
+                                                height as f64,
+                                                prev,
+                                                1.0 - progress,
+                                            );
+                                            draw_single_slide_text(
+                                                &cr,
+                                                width as f64,
+                                                height as f64,
+                                                &slide,
+                                                progress,
+                                            );
+                                        } else {
+                                            draw_single_slide_text(
+                                                &cr,
+                                                width as f64,
+                                                height as f64,
+                                                &slide,
+                                                1.0,
+                                            );
+                                        }
+                                    } else {
+                                        draw_single_slide_text(
+                                            &cr,
+                                            width as f64,
+                                            height as f64,
+                                            &slide,
+                                            1.0,
+                                        );
+                                    }
+
+                                    // Drop cairo Context to release surface borrow before accessing raw data!
+                                    drop(cr);
+
+                                    // Flush and copy data
+                                    surface.flush();
+                                    if let Ok(data) = surface.data() {
+                                        pixel_buffer.copy_from_slice(&*data);
+                                        last_sent_time = std::time::Instant::now();
+                                    }
+
+                                    let video_data = VideoData::from_buffer(
+                                        width as i32,
+                                        height as i32,
+                                        FourCCVideoType::BGRA,
+                                        60,
+                                        1,
+                                        FrameFormatType::Progressive,
+                                        0,
+                                        (width * 4) as i32,
+                                        None,
+                                        &mut pixel_buffer,
+                                    );
+                                    sender.send_video(&video_data);
+                                }
+                            }
                         }
-
-                        // Drop cairo Context to release surface borrow before accessing raw data!
-                        drop(cr);
-
-                        // Flush and copy data
-                        surface.flush();
-                        match surface.data() {
-                            Ok(data) => {
-                                pixel_buffer.copy_from_slice(&*data);
-                                last_sent_time = std::time::Instant::now();
-                            }
-                            Err(e) => {
-                                eprintln!("Error borrowing surface data: {:?}", e);
-                            }
-                        }
-
-                        let video_data = VideoData::from_buffer(
-                            width as i32,
-                            height as i32,
-                            FourCCVideoType::BGRA,
-                            60,
-                            1,
-                            FrameFormatType::Progressive,
-                            0,
-                            (width * 4) as i32,
-                            None,
-                            &mut pixel_buffer,
-                        );
-                        sender.send_video(&video_data);
                     }
                 }
+            });
+            if let Err(e) = res {
+                eprintln!("NDI background thread panicked/unwound safely: {:?}", e);
             }
         });
 
