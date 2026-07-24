@@ -368,15 +368,22 @@ pub fn query_verses(search_query: &str, translation: &str) -> Vec<Verse> {
 }
 
 pub fn clean_verse_text(raw: &str) -> String {
-    let mut s = raw.to_string();
-    while let Some(start) = s.find('<') {
-        if let Some(end) = s[start..].find('>') {
-            s.drain(start..=start + end);
-        } else {
-            break;
+    let mut result = String::with_capacity(raw.len());
+    let mut in_angle = false;
+
+    for c in raw.chars() {
+        match c {
+            '<' => in_angle = true,
+            '>' => in_angle = false,
+            '[' | ']' => {}
+            _ => {
+                if !in_angle {
+                    result.push(c);
+                }
+            }
         }
     }
-    s.replace('[', "").replace(']', "").trim().to_string()
+    result.trim().to_string()
 }
 
 pub fn load_default_genesis_1(conn: &Connection, translation: &str) -> Vec<Verse> {
@@ -753,7 +760,10 @@ mod tests {
 
     #[test]
     fn test_clean_verse_text() {
-        let raw = "<A Song of degrees of David.> I was glad when they said unto me...";
-        assert_eq!(clean_verse_text(raw), "I was glad when they said unto me...");
+        let raw = "<A Song of degrees of David.> I was glad when they said unto me…";
+        assert_eq!(clean_verse_text(raw), "I was glad when they said unto me…");
+
+        let raw2 = "<Header 1> Text <Header 2> [Notes] End";
+        assert_eq!(clean_verse_text(raw2), "Text  Notes End");
     }
 }
