@@ -1631,6 +1631,7 @@ pub fn build_ui(app: &Application) {
         if width <= 0 || height <= 0 {
             return;
         }
+        let _font_guard = crate::ndi_out::cairo_font_lock().lock().unwrap_or_else(|e| e.into_inner());
         let s = state_draw_preview.borrow();
         let theme = s.selected_theme;
         let theme_str = if theme == "custom" {
@@ -1795,6 +1796,7 @@ pub fn build_ui(app: &Application) {
         if width <= 0 || height <= 0 {
             return;
         }
+        let _font_guard = crate::ndi_out::cairo_font_lock().lock().unwrap_or_else(|e| e.into_inner());
         let s = state_draw_live.borrow();
         let theme = s.selected_theme;
         let theme_str = if theme == "custom" {
@@ -4237,6 +4239,7 @@ fn show_song_editor_window(
         if width <= 0 || height <= 0 {
             return;
         }
+        let _font_guard = crate::ndi_out::cairo_font_lock().lock().unwrap_or_else(|e| e.into_inner());
         let song = song_state_draw.borrow();
         let idx = *active_stanza_idx_draw.borrow();
         if let Some(stanza) = song.stanzas.get(idx) {

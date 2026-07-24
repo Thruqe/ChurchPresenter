@@ -2,9 +2,20 @@ use crate::{eprintln, println};
 use gtk::cairo::{Context, FontSlant, FontWeight, Format, ImageSurface};
 #[cfg(not(target_os = "macos"))]
 use ndi::{FourCCVideoType, FrameFormatType, VideoData};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
+
+// Global mutex to serialize Cairo font operations between the GTK main thread
+// and the NDI background thread.  Cairo's toy font API (select_font_face /
+// text_extents / show_text) calls into platform font libraries (Win32 GDI,
+// fontconfig) that are NOT thread-safe.  Concurrent calls from two threads
+// corrupt internal caches and cause STATUS_ACCESS_VIOLATION on Windows.
+static CAIRO_FONT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+pub fn cairo_font_lock() -> &'static Mutex<()> {
+    CAIRO_FONT_LOCK.get_or_init(|| Mutex::new(()))
+}
 
 #[derive(Debug, Clone)]
 pub struct NdiSlideData {
@@ -500,6 +511,9 @@ impl NdiOutput {
                             let surface_res =
                                 ImageSurface::create(Format::ARgb32, width as i32, height as i32);
                             if let Ok(mut surface) = surface_res {
+                                // Acquire the global font lock before any Cairo font operations.
+                                // This prevents concurrent font cache access with the GTK main thread.
+                                let _font_guard = cairo_font_lock().lock().unwrap_or_else(|e| e.into_inner());
                                 if let Ok(cr) = Context::new(&surface) {
                                     // 1. Draw target background instantly
                                     draw_background(
@@ -554,28 +568,30 @@ impl NdiOutput {
 
                                     // Drop cairo Context to release surface borrow before accessing raw data!
                                     drop(cr);
-
-                                    // Flush and copy data
-                                    surface.flush();
-                                    if let Ok(data) = surface.data() {
-                                        pixel_buffer.copy_from_slice(&*data);
-                                        last_sent_time = std::time::Instant::now();
-                                    }
-
-                                    let video_data = VideoData::from_buffer(
-                                        width as i32,
-                                        height as i32,
-                                        FourCCVideoType::BGRA,
-                                        60,
-                                        1,
-                                        FrameFormatType::Progressive,
-                                        0,
-                                        (width * 4) as i32,
-                                        None,
-                                        &mut pixel_buffer,
-                                    );
-                                    sender.send_video(&video_data);
                                 }
+                                // Release font lock before buffer copy
+                                drop(_font_guard);
+
+                                // Flush and copy data
+                                surface.flush();
+                                if let Ok(data) = surface.data() {
+                                    pixel_buffer.copy_from_slice(&*data);
+                                    last_sent_time = std::time::Instant::now();
+                                }
+
+                                let video_data = VideoData::from_buffer(
+                                    width as i32,
+                                    height as i32,
+                                    FourCCVideoType::BGRA,
+                                    60,
+                                    1,
+                                    FrameFormatType::Progressive,
+                                    0,
+                                    (width * 4) as i32,
+                                    None,
+                                    &mut pixel_buffer,
+                                );
+                                sender.send_video(&video_data);
                             }
                         }
                     }
