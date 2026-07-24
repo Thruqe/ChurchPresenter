@@ -69,6 +69,7 @@ pub struct AppState {
     pub live_prev_header: String,
     pub live_prev_body: String,
     pub live_trans_start: Option<std::time::Instant>,
+    pub live_trans_active: bool,
     // Default song backgrounds
     pub default_song_bg_type: String,
     pub default_song_bg_val: Option<String>,

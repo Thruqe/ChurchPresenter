@@ -417,22 +417,27 @@ fn draw_slide_cairo(
 
     if let Some(start) = trans_start {
         let elapsed = start.elapsed().as_millis() as f64;
-        let duration = 800.0;
+        let duration = 250.0;
         if elapsed < duration {
             let progress = elapsed / duration;
-            draw_single_slide_text(
-                cr,
-                width,
-                height,
-                prev_header,
-                prev_body,
-                logo_mode,
-                clearout,
-                blackout,
-                1.0 - progress,
-                has_logo_image,
-                prev_song_stanza,
-            );
+            if !prev_body.is_empty()
+                && !prev_body.contains("[Standby")
+                && !prev_body.contains("Projection Off")
+            {
+                draw_single_slide_text(
+                    cr,
+                    width,
+                    height,
+                    prev_header,
+                    prev_body,
+                    logo_mode,
+                    clearout,
+                    blackout,
+                    1.0 - progress,
+                    has_logo_image,
+                    prev_song_stanza,
+                );
+            }
             draw_single_slide_text(
                 cr,
                 width,
@@ -767,6 +772,14 @@ fn refresh_live_text_mode(
 }
 
 fn start_live_transition(drawing_area: &gtk::DrawingArea, state: &Rc<RefCell<AppState>>) {
+    {
+        let mut s = state.borrow_mut();
+        if s.live_trans_active {
+            return;
+        }
+        s.live_trans_active = true;
+    }
+
     let drawing_area = drawing_area.clone();
     let state = state.clone();
     gtk::glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
@@ -777,9 +790,10 @@ fn start_live_transition(drawing_area: &gtk::DrawingArea, state: &Rc<RefCell<App
                 .unwrap_or(999)
         };
         drawing_area.queue_draw();
-        if elapsed >= 800 {
+        if elapsed >= 250 {
             let mut s = state.borrow_mut();
             s.live_trans_start = None;
+            s.live_trans_active = false;
             gtk::glib::ControlFlow::Break
         } else {
             gtk::glib::ControlFlow::Continue
@@ -1153,6 +1167,7 @@ pub fn build_ui(app: &Application) {
         live_prev_header: String::new(),
         live_prev_body: String::new(),
         live_trans_start: None,
+        live_trans_active: false,
         default_song_bg_type: crate::db::get_config_value("default_song_bg_type")
             .unwrap_or_else(|| "transparent".to_string()),
         default_song_bg_val: crate::db::get_config_value("default_song_bg_val"),
